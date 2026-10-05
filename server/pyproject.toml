@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "k1remote"
+version = "0.1.0"
+description = "UV-K1 / UV-K5 远程工作站：屏幕镜像、远程控制、WebRTC 语音"
+requires-python = ">=3.11"
+dependencies = [
+    "pyserial>=3.5",
+    "aiohttp>=3.9",
+    "aiortc>=1.9",
+    "sounddevice>=0.5",
+    "numpy>=1.26",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[project.scripts]
+k1remote = "k1remote.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["k1remote*"]

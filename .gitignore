@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# 本地密钥与配置（重新生成：tools/make_cert.py；模板见 deploy/config.example.toml）
+certs/
+server/server.toml
+
+# 串口抓包与测试录音（tools/serial_probe.py --save、audio_loopback.py --record）
+capture-*/
+tmp-diag*/
+capture.bin
+screen.pbm
+*.wav

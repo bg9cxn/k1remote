@@ -1,0 +1,32 @@
+# K1Remote 服务端完整配置模板
+# 复制为 server.toml 后按需修改；所有项都有缺省值，最小配置只需 [server] 的 TLS 部分。
+
+[server]
+host = "0.0.0.0"
+port = 8443
+# 局域网浏览器麦克风必需 HTTPS（自签证书用 tools/make_cert.py 生成）
+tls_cert = "certs/server.pem"
+tls_key = "certs/server.key"
+# 操作口令：启用后浏览器需以 https://IP:PORT/?token=口令 访问一次（之后自动记住）
+token = "change-me-please"
+# web_dir = ""             # 缺省自动定位仓库内 web/ 目录
+
+[radio]
+variant = "v1"             # v1 = uv-k5-firmware-custom-remote(UART 38400) / v3 = uv-k1-k5v3(USB CDC)
+port = "auto"              # "auto" 自动识别，或显式 /dev/ttyACM0、/dev/ttyUSB0
+# baud = 38400             # 缺省按变体取值（v1=38400 / v3=115200），可覆盖
+keepalive_ms = 100         # 屏幕流保活周期
+features = -1              # -1 = 按变体取缺省（v1=0，v3=RF_LOG）
+reconnect_s = 2.0          # 串口断线重连间隔
+max_tx_s = 180.0           # 最长连续发射（看门狗强制释放）；建议与电台 TxTOut 一致或略短
+tx_tail_ms = 400           # 松开 PTT 后的尾音保护（覆盖在途语音再撤电平）
+
+[aioc]
+port = "auto"              # AIOC 串口（PTT 电平控制）；"auto" 按 USB VID:PID 识别
+
+[audio]
+device = ""                # 收音输入设备名子串；空 = 优先匹配 AIOC
+output_device = ""         # 发话输出设备名子串；空 = 优先匹配 AIOC
+rate = 48000               # AIOC 原生 48kHz 单声道
+rx_gain = 1.0              # 收听软件增益（音量小调大，1-8；过大放大底噪）
+tx_gain = 1.0              # 发话软件增益（对方听着小调大；过大过调）

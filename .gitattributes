@@ -1,0 +1,3 @@
+# 统一文本文件行尾为 LF：deploy/install.sh 等脚本在树莓派 (Linux) 上运行，
+# CRLF 会导致 bash 报错；二进制文件由 text=auto 自动排除。
+* text=auto eol=lf

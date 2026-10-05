@@ -1,0 +1,17 @@
+[Unit]
+Description=K1Remote UV-K5 remote station server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=%USER%
+WorkingDirectory=%REPO_DIR%
+ExecStart=%REPO_DIR%/venv/bin/python -m k1remote -c %CONFIG%
+Restart=always
+RestartSec=3
+# 崩溃/断电自愈：systemd 拉起后服务端会重新打开串口、释放 PTT 状态
+# 串口权限：运行用户需在 dialout 组（install.sh 已处理）
+
+[Install]
+WantedBy=multi-user.target

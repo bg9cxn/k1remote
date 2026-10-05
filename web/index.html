@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>K1Remote · UV-K1 远程台</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📻</text></svg>">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="topbar">
+  <h1>K1Remote</h1>
+  <div class="indicators">
+    <span class="chip"><span class="dot" id="dot-ws"></span>服务</span>
+    <span class="chip"><span class="dot" id="dot-radio"></span>对讲机</span>
+    <span class="chip led" id="led-rx">RX</span>
+    <span class="chip led" id="led-tx">TX</span>
+  </div>
+</header>
+
+<main>
+  <section class="card screen-card">
+    <canvas id="screen" width="128" height="64"></canvas>
+    <div class="listen-row">
+      <button id="listen-btn" class="listen-btn">▶ 开始收听</button>
+      <input id="volume" type="range" min="0" max="100" value="80" title="音量">
+    </div>
+    <p class="hint" id="listen-hint">128×64 · 与对讲机屏幕实时同步</p>
+  </section>
+
+  <aside class="card side-card">
+    <h2>收发记录 <small>RF Log</small></h2>
+    <div id="rflog" class="rflog"><p class="empty">暂无收发记录</p></div>
+  </aside>
+</main>
+
+<audio id="rx-audio" autoplay></audio>
+
+<section class="card keypad-card">
+  <div class="tx-row">
+    <label class="arm-switch">
+      <input type="checkbox" id="arm">
+      <span>发射使能</span>
+    </label>
+    <button id="ptt" class="ptt-btn" disabled>PTT</button>
+    <div class="ptt-info">
+      <div id="ptt-status">未使能</div>
+      <div id="ptt-timer"></div>
+    </div>
+  </div>
+  <div class="keypad" id="keypad"></div>
+  <p class="hint">长按按钮 = 长按注入 · 空格键 = PTT（需先使能） · 物理键盘：0-9 / ↑ ↓ / Enter=MENU / Esc=EXIT / * / #</p>
+</section>
+
+<script type="module" src="/static/main.js"></script>
+</body>
+</html>

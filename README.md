@@ -55,6 +55,8 @@ python -m k1remote --demo
 ```bash
 python -m k1remote                # 串口与 AIOC 自动识别（V1 单线共用串口）
 python -m k1remote -p /dev/ttyUSB0 --host 0.0.0.0
+python -m k1remote --variant v3   # UV-K1 / UV-K5 V3 硬件（USB CDC + RF Log）
+python -m k1remote --list-ports   # 查看串口识别结果
 ```
 
 操作流程：**▶ 开始收听**（会同时请求麦克风；拒绝则仅收听）→ **勾选发射使能** → **按住 PTT 说话**（松开结束发射）。
@@ -92,75 +94,6 @@ python -m k1remote -c server.toml
 - 首次访问点击"高级 → 继续前往"接受自签证书（一次即可）；
 - 之后麦克风可用，token 会记住（存 sessionStorage），刷新自动携带；
 - 若页面显示"仅收听"，说明当前不是安全上下文或麦克风被拒——检查地址是否 https:// 。
-
-## 快速开始
-
-### 1. 探测串口与 PTT（任何装了 Python 的机器，含 Windows 开发机）
-
-对讲机 K 型口经 AIOC 连电脑：
-
-> **先在电台菜单里把 SetOff（自动深睡）设为 OFF**——固件的深睡倒计时只认射频收发，
-> 串口保活不能阻止入睡，睡后推流会静默（服务端有停滞自动唤醒兜底，但部署电台应直接关闭）。
-
-```bash
-pip install pyserial
-python tools/serial_probe.py --list                    # 查看串口分类（radio / aioc）
-python tools/serial_probe.py -p COM4                   # 实时渲染对讲机屏幕（默认 38400）
-python tools/serial_probe.py -p COM4 --inject up       # 远程按一下 ↑ 键
-python tools/serial_probe.py -p COM4 --ptt-test 1.5    # 电平 PTT 测试（静默保活 + 退出兜底释放）
-python tools/serial_probe.py -p COM4 --ptt-test 1.5 --no-mute   # 对照实验：不静默则键不上
-```
-
-> PTT 原理：DTR=1 & RTS=0 经 AIOC 拉低 3.5mm Sleeve 键控对讲机（该触点与主机→对讲机数据共用，
-> AIOC 固件数据优先会强制释放 PTT，因此**发射期间必须静默保活**——工具已内置）。
-
-### 2. 音频链路验证（M2）
-
-```bash
-pip install sounddevice numpy
-python tools/audio_loopback.py --list              # 枚举音频设备（找 AIOC）
-python tools/audio_loopback.py --meter -d 5        # 采集电平表（对讲机收信号应有读数）
-python tools/audio_loopback.py --record rx.wav -d 5      # 环录 5 秒存 WAV
-python tools/audio_loopback.py --sine -d 3         # 播放 440Hz（配合 --ptt-test 空中应听到纯音）
-```
-
-### 3. 跑 Web 服务（演示模式，无需硬件）
-
-```bash
-cd server
-pip install aiohttp pyserial aiortc sounddevice numpy
-python -m k1remote --demo
-# 浏览器打开 http://127.0.0.1:8080，点"▶ 开始收听"可听到演示正弦音（WebRTC）
-```
-
-### 4. 跑 Web 服务（接真机）
-
-```bash
-python -m k1remote                # 缺省 v1 变体（38400，纯保活），串口自动识别
-python -m k1remote -p /dev/ttyUSB0 --host 0.0.0.0
-python -m k1remote --variant v3   # UV-K1 / UV-K5 V3 硬件（USB CDC + RF Log）
-python -m k1remote --list-ports   # 查看识别结果
-```
-
-配置文件（可选）：
-
-```toml
-[server]
-host = "0.0.0.0"
-port = 8080
-# tls_cert = "/etc/k1remote/cert.pem"   # M5：浏览器麦克风必需 HTTPS
-# tls_key  = "/etc/k1remote/key.pem"
-# token = "change-me"
-
-[radio]
-variant = "v1"     # v1 = 自研固件(UART 38400) / v3 = uv-k1-k5v3(USB CDC)
-port = "auto"      # 或显式 /dev/ttyUSB0
-# baud = 38400     # 缺省按变体取值，可覆盖
-
-[audio]
-device = "AIOC"    # 输入设备名称子串；空 = 系统默认输入
-rate = 48000
-```
 
 ## 目录
 

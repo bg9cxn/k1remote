@@ -181,6 +181,11 @@ ROW_FLAG_TX = 1 << 0
 ROW_FLAG_MONITOR = 1 << 2
 ROW_FLAG_SESSION = 1 << 3
 
+# 电池电压编码（App/app/rxtx_log.c:47-49）：存 6.00V 以上的厘伏数，
+# 饱和于 8.54V（254）；0xFF = 未知（会话外/尚未采样）
+RF_LOG_BATT_OFFSET_CV = 600
+RF_LOG_BATT_UNKNOWN = 0xFF
+
 
 @dataclass
 class RfLogRow:
@@ -201,11 +206,19 @@ class RfLogRow:
     def is_session(self) -> bool:
         return bool(self.flags & ROW_FLAG_SESSION)
 
+    @property
+    def battery_volts(self) -> Optional[float]:
+        """电池电压（V）；编码为 6.00V 以上的厘伏数，未知/无效返回 None。"""
+        if self.batt_volt == RF_LOG_BATT_UNKNOWN:
+            return None
+        return round((RF_LOG_BATT_OFFSET_CV + self.batt_volt) / 100.0, 2)
+
     def as_dict(self) -> dict:
         return {
             "freq": self.frequency, "seq": self.traffic_seq,
             "dur": self.duration_seconds, "ch": self.channel,
             "tx": self.is_tx, "meter": self.meter, "batt": self.batt_volt,
+            "volts": self.battery_volts,
             "name": self.channel_name,
         }
 

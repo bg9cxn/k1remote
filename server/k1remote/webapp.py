@@ -1,11 +1,12 @@
 """Web 服务：HTTPS 静态托管 + WebSocket（屏幕帧下发、控制指令上行）。
 
 浏览器 ↔ 服务端 WebSocket 协议（M1 范围）：
-  服务端 → 客户端
+    服务端 → 客户端
     二进制  [0x01][stateFlags][1024B 垂直字节帧缓冲]        屏幕帧
-    文本    {"t":"hello","radio":bool,"tx":bool,"rx":bool}   接入问候
+    文本    {"t":"hello","radio":bool,"tx":bool,"rx":bool,
+             "ptt":bool,"max_tx_s":num,"rf":row|null}        接入问候（rf=最近 RF Log 行，v3 专属）
     文本    {"t":"status","radio":bool,"tx":bool,"rx":bool}  连接/状态变化
-    文本    {"t":"rflog","rows":[{...}]}                     RF Log 活动行
+    文本    {"t":"rflog","rows":[{...}]}                     RF Log 活动行（v3 专属）
   客户端 → 服务端
     文本    {"t":"key","key":"up","long":false}              注入按键
     文本    {"t":"ping"}                                     心跳
@@ -27,12 +28,29 @@ from aiohttp import WSMsgType, web
 from .config import AppConfig
 from .ptt import PttManager
 from .radio.k5viewer import K5ViewerClient
-from .radio.protocol import FLAG_LED_GREEN, FLAG_LED_RED, Frame, Key, ScreenFrame, RfLogFrame, RfLogHistoryFrame, ScreenState, keycode_from_name
+from .radio.protocol import FLAG_DEEP_SLEEP, FLAG_LED_GREEN, FLAG_LED_RED, Frame, Key, ScreenFrame, RfLogFrame, RfLogHistoryFrame, ScreenState, keycode_from_name
 from .webrtc import WebRTCService
 
 log = logging.getLogger(__name__)
 
 WS_MSG_SCREEN = 0x01
+
+WAKE_MIN_INTERVAL_S = 10.0  # 两次唤醒注入的最小间隔
+
+
+def should_wake(state_flags: int, last_screen_at: Optional[float],
+                last_wake_at: float, now: float) -> bool:
+    """是否注入 EXIT 唤醒对讲机：仅当确认其处于 SetOff 深睡。
+
+    固件入睡瞬间会经状态变化帧上报 FLAG_DEEP_SLEEP，正常空闲（含省电慢流）
+    绝不带此标志——若按"流停滞"判定，main only 空闲场景会每 10s 误注入一次，
+    按键蜂鸣且反复打断省电倒计时，对讲机永远进不了 PS。
+    要求最后一帧晚于上次注入（新证据）：对讲机实际已醒但暂无帧时不再重复注入。"""
+    if not state_flags & FLAG_DEEP_SLEEP:
+        return False
+    if last_screen_at is None or last_screen_at <= last_wake_at:
+        return False
+    return now - last_wake_at > WAKE_MIN_INTERVAL_S
 
 
 class Hub:
@@ -46,6 +64,7 @@ class Hub:
         self._loop_tid: Optional[int] = None
         self.last_screen_at: Optional[float] = None  # 最近收到屏幕帧的时刻
         self._last_wake_at: float = 0.0
+        self.last_rf_row: Optional[dict] = None  # 最近 RF Log 活动行（v3 专属，供快照）
 
     # ---- radio 线程回调（经 call_soon_threadsafe 封送）----
 
@@ -70,6 +89,7 @@ class Hub:
                 self.broadcast_json(self.status_dict())
         elif isinstance(frame, RfLogFrame):
             if frame.rows:
+                self.last_rf_row = frame.rows[-1].as_dict()
                 self.broadcast_json({
                     "t": "rflog",
                     "rows": [r.as_dict() for r in frame.rows[-8:]],
@@ -118,7 +138,8 @@ class Hub:
     async def send_snapshot(self, ws: web.WebSocketResponse, ptt: PttManager) -> None:
         await ws.send_json({"t": "hello", **{
             k: v for k, v in self.status_dict().items() if k != "t"},
-            "ptt": ptt.held, "max_tx_s": ptt.max_tx_s})
+            "ptt": ptt.held, "max_tx_s": ptt.max_tx_s,
+            "rf": self.last_rf_row})
         if self.screen.received_any:
             await ws.send_bytes(bytes((WS_MSG_SCREEN, self.screen.state_flags))
                                 + bytes(self.screen.framebuffer))
@@ -130,21 +151,23 @@ def make_app(cfg: AppConfig, radio: K5ViewerClient, hub: Hub,
     watchdog_task: Optional[asyncio.Task] = None
 
     async def wake_loop() -> None:
-        """屏幕流停滞自动唤醒：对讲机 SetOff 深睡后推流静默，且固件的深睡
-        倒计时只认射频收发（串口活动不阻止入睡）。停滞时注入 EXIT（各界面
-        下最无害的按键）唤醒主循环；空闲省电的慢速流（~0.5s 一帧）不触发。
-        发射保持期间跳过（数据会破坏 PTT，且唤醒键会排队到释放后）。"""
+        """SetOff 深睡自动唤醒：固件的深睡倒计时只认射频收发（串口活动不阻
+        止入睡），睡后推流静默、保活唤不醒。固件入睡瞬间会经状态变化帧上报
+        FLAG_DEEP_SLEEP，据此注入 EXIT（各界面下最无害的按键）唤醒主循环；
+        深睡下 EXIT 走固件 backlight 分支，不响蜂鸣。正常空闲（main only +
+        频率安静）流也会静默，但绝不带深睡标志，不得注入。发射保持期间跳过
+        （数据会破坏 PTT，且唤醒键会排队到释放后）。"""
         try:
             while True:
                 await asyncio.sleep(2.0)
                 if not hub.radio_connected or not hub.clients or ptt.held or ptt.releasing:
                     continue
                 now = time.monotonic()
-                last = hub.last_screen_at
-                if (last is None or now - last > 6.0) and now - hub._last_wake_at > 10.0:
+                if should_wake(hub.screen.state_flags, hub.last_screen_at,
+                               hub._last_wake_at, now):
                     hub._last_wake_at = now
                     radio.send_key(Key.EXIT)
-                    log.info("屏幕流停滞，注入 EXIT 尝试唤醒对讲机")
+                    log.info("对讲机处于深睡，注入 EXIT 唤醒")
         except asyncio.CancelledError:
             pass
 

@@ -82,6 +82,7 @@ function handleJson(msg) {
       dotRadio.classList.toggle("on", !!msg.radio);
       ledRx.classList.toggle("active", !!msg.rx);
       ledTx.classList.toggle("active", !!msg.tx);
+      if (msg.rf) renderRfState(msg.rf); // hello 快照携带最近 RF Log 行
       break;
     case "rflog":
       renderRfLog(msg.rows || []);
@@ -113,6 +114,7 @@ function handleJson(msg) {
 function renderRfLog(rows) {
   if (!rows.length) return;
   rflogBox.querySelector(".empty")?.remove();
+  renderRfState(rows[rows.length - 1]);
   for (const r of rows) {
     const div = document.createElement("div");
     div.className = "rfrow" + (r.tx ? " tx" : "");
@@ -122,6 +124,14 @@ function renderRfLog(rows) {
     rflogBox.prepend(div);
   }
   while (rflogBox.children.length > 12) rflogBox.lastChild.remove();
+}
+
+/* 电池电压/当前频率/信道：仅 K1/K5 V3（v3 变体）经 RF Log 上报；v1 上保持占位 */
+function renderRfState(r) {
+  if (!r) return;
+  $("rf-batt").textContent = r.volts != null ? `🔋 ${r.volts.toFixed(2)}V` : "🔋 —";
+  const mhz = (r.freq / 1e6).toFixed(4);
+  $("rf-ch").textContent = `${mhz} MHz · ${r.name || "CH" + r.ch}`;
 }
 
 function sendKey(name, long = false) {

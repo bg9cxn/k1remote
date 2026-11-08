@@ -65,6 +65,21 @@ def pick_aioc_port(ports: Iterable[PortInfo]) -> Optional[PortInfo]:
     return classified["aioc"][0] if classified["aioc"] else None
 
 
+def guess_variant(device: str) -> Optional[str]:
+    """按串口设备名推断固件变体（Linux 部署的启发式，供 variant=auto 落位）。
+
+    v3/K1 硬件是原生 USB CDC，Linux 枚举为 ttyACM*；v1 走 USB-UART 桥，
+    枚举为 ttyUSB*。Windows 的 CDC 与 UART 桥都叫 COM*，无法区分——返回
+    None，由调用方回落 v1 并提示显式 --variant。
+    """
+    name = device.replace("\\", "/").rsplit("/", 1)[-1].lower()
+    if name.startswith("ttyacm"):
+        return "v3"
+    if name.startswith("ttyusb"):
+        return "v1"
+    return None
+
+
 def list_serial_ports() -> List[PortInfo]:
     """枚举本机串口（依赖 pyserial，仅在真实环境调用）。
 

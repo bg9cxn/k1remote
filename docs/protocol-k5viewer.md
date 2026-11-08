@@ -4,9 +4,19 @@
 
 | 变体 | 固件仓库 | 硬件 | 物理链路 | 波特率 | RF Log 扩展 |
 |---|---|---|---|---|---|
-| **v1（当前目标）** | `uv-k5-firmware-custom-remote` | UV-K5 V1（DP32G030） | K 型口编程线（CP2102/CH340 等 USB-UART 桥） | **38400** | 无 |
-| v3（保留兼容） | `uv-k1-k5v3-firmware-custom` | UV-K1 / UV-K5 V3（PY32F071） | USB-C CDC-ACM | 任意（CDC 不依赖） | 有 |
+| **v1（已真机验证）** | `uv-k5-firmware-custom-remote` | UV-K5 V1（DP32G030） | K 型口编程线（CP2102/CH340 等 USB-UART 桥） | **38400** | 无 |
+| **v3（已支持）** | `uv-k1-k5v3-firmware-custom` | UV-K1 / UV-K5 V3（PY32F071） | K 头 UART 或机身 Type-C CDC（**推荐双线：Type-C 数据 + K 头 AIOC 音频/PTT**） | CDC 任意；K 头 38400 | 有 |
 
+v3 数据口选择（固件双口支持，`App/k5viewer.c: K5VIEWER_ParseInput`）：K 头保留 38400 UART
+（与 V1 完全相同，CPS 写频与 K5Viewer 推流均可用），机身 Type-C 为新增并行 CDC 数据口。
+固件每个主循环 tick **先检测 K 头**（`UART_IsCableConnected`），K 头有合法字节即从 K 头推流；
+K 头安静才认 Type-C 保活（`VCP_K5ViewerPing`）——往哪个口发保活，流就从哪个口出，双口同时
+连接不会打架。推荐双线的理由：K 头让给 AIOC 专做音频+PTT（数据与 PTT1 无共触点，规避
+TXFRCPTT 仲裁），且 CDC 带宽富余（RF Log 实时包 1629B 在 38400 下需 ~420ms）。
+
+变体选择：配置缺省 `variant = "auto"`——按自动识别的对讲机串口类型推断
+（Linux：`ttyACM*`→v3、`ttyUSB*`→v1；Windows 的 CDC 与 UART 桥同为 `COM*`，
+无法区分，回落 v1 并提示显式 `--variant v3`）。
 v1 固件为用户在 Egzumer/F4HWN V1 固件基础上增加串口控制的版本（`k5viewer.c` 自 V3 移植）。
 屏幕流与按键注入协议两者一致，差异仅在物理层、保活扩展位与 RF Log 帧（见 §5）。
 
@@ -124,7 +134,7 @@ def decode_chunk(fb, idx, payload):
 | 重同步 | 扫描 `0xF0..0xF7` 标记字节 | 标记高 4 位固定，误码可自恢复 |
 | 单连接独占 | 是 | CHIRP 等占用时 `gUART_LockK5Viewer` 锁定推流 |
 
-## 5. v3 附录：RF Log 扩展（保留兼容）
+## 5. v3 附录：RF Log 扩展（K1/K5 V3 专属）
 
 v3 固件（USB CDC）在扩展保活 `55 AA 05 <flags>` 打开对应位后会追加两种帧
 （v1 固件无此功能，解析库保留支持以便双固件兼容）：
@@ -144,7 +154,7 @@ struct {            // <I I H H B B B 10s>
   uint16 channel;         // 信道号
   uint8  flags;           // bit0=TX(否则RX), bit2=MONITOR, bit3=SESSION
   uint8  meter;           // S 表
-  uint8  battVolt;        // 电池电压(编码值)
+  uint8  battVolt;        // 6.00V 以上厘伏数，饱和 8.54V(254)；0xFF=未知
   char   channelName[10]; // NUL 填充
 };
 ```

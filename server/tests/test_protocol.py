@@ -197,6 +197,47 @@ def test_rflog_version_mismatch_is_dropped():
     assert frames == []
 
 
+def test_rflog_battery_volts():
+    """电池编码 = 6.00V 以上厘伏数（rxtx_log.c），饱和 8.54V，0xFF=未知。"""
+    assert parse_row(_make_row(batt=77), 0).battery_volts == 6.77
+    assert parse_row(_make_row(batt=254), 0).battery_volts == 8.54  # 饱和值
+    assert parse_row(_make_row(batt=0xFF), 0).battery_volts is None
+    assert "volts" in parse_row(_make_row(batt=77), 0).as_dict()
+
+
+# ---- 固件变体配置 ----
+
+
+def test_variant_resolved_defaults():
+    from k1remote.config import RadioConfig
+    from k1remote.radio.protocol import FEATURE_RF_LOG
+    v1 = RadioConfig(variant="v1")
+    assert v1.resolved_baud() == 38400
+    assert v1.resolved_features() == 0
+    v3 = RadioConfig(variant="v3")
+    assert v3.resolved_baud() == 115200
+    assert v3.resolved_features() == FEATURE_RF_LOG
+    # 显式覆盖始终优先于变体缺省
+    assert RadioConfig(variant="v1", baud=9600).resolved_baud() == 9600
+    assert RadioConfig(variant="v3", features=0).resolved_features() == 0
+
+
+def test_variant_auto_must_be_resolved_first_and_unknown_rejected():
+    from k1remote.config import RadioConfig
+    with pytest.raises(ValueError):
+        RadioConfig(variant="auto").resolved_baud()  # 入口负责按串口类型落位
+    with pytest.raises(ValueError):
+        RadioConfig(variant="v2").resolved_features()
+
+
+def test_guess_variant_from_device_name():
+    from k1remote.radio.ports import guess_variant
+    assert guess_variant("/dev/ttyACM0") == "v3"   # K1/K5 V3 原生 USB CDC
+    assert guess_variant("/dev/ttyUSB0") == "v1"   # V1 走 USB-UART 桥
+    assert guess_variant("COM7") is None           # Windows CDC/桥同为 COM*，不猜
+    assert guess_variant("/dev/ttyAMA0") is None   # 板载 UART 不属于任何变体
+
+
 # ---- 端口识别 ----
 
 

@@ -16,6 +16,51 @@
 - 树莓派供电建议 UPS/充电宝方案；WiFi 或有线接入路由。
 - EMI 防护：天线加地网（tiger tail）或磁环，避免发射时 USB 掉线。
 
+## 1.5 K1 / K5 V3 硬件（v3 变体）
+
+K 型口仍保留 38400 UART（与 V1 完全相同，CPS 写频与 K5Viewer 推流均可用，固件每个
+主循环 tick 优先检测 K 头，`App/k5viewer.c`）；机身 Type-C 为新增的并行数据口
+（USB CDC，Linux 枚举为 `/dev/ttyACM*`）。
+
+**部署定稿双线：Type-C 传数据 + K 型口 AIOC 传音频/PTT**——带宽富余（RF Log 实时包
+1.6KB 在 38400 下需 ~420ms，CDC 无压力）、数据与 PTT1 无共触点（无 TXFRCPTT 仲裁
+约束）、`variant = "auto"` 按串口类型零参数识别（Windows 下 CDC 也枚举为 `COM*`
+区分不了，需显式 `--variant v3`）。
+
+**刷机（一次性）**——固件须为启用 K5VIEWER 的 F4HWN **Fusion** 版
+（单镜像同时兼容 K1 与 K5 V3；成品在固件仓 `uv-k1-k5v3-firmware-custom/archive/`）：
+
+1. **备份校准数据（强烈建议）**：正常开机，浏览器打开
+   [UV Studio → Dump Calibration](https://armel.github.io/uvstudio/#dump-calib)，
+   按 SN 保存 `calibration.dat`（换固件/回原厂前先恢复）；
+2. **刷固件**：对讲机进 **DFU 模式（刷机模式）**，打开
+   [UV Studio → Flash Firmware](https://armel.github.io/uvstudio/#flash)，
+   加载本地 `f4hwn.fusion.v6.0.0.bin`（或直接选官方 Fusion 目录版）→ 选串口 → 等进度条完成；
+   无浏览器 Web Serial 时也可用命令行：
+   `python uv-k1-k5v3-firmware-custom/tools/serialtool/cli.py flash -p <口> <固件.bin>`；
+3. **刷后配置**：按 §0 清单确认 SetOff=OFF、TxTOut 等（Fusion 固件菜单项一致）；
+4. 顺手验证：`python -m k1remote --list-ports` 应看到 radio 组的 `ttyACM*`（标注"疑似 K1/K5 V3"）。
+
+连接（定稿双线）：机身 USB-C → 树莓派（数据），K 型口 ← AIOC → 树莓派（音频 + PTT）。
+应急单线：手头没有 USB-C 数据线时，也可 K 型口 AIOC 一线全包（数据走 K 头 38400 UART）——
+`python -m k1remote --port <AIOC口> --variant v3 --baud 38400`
+（屏幕较慢，且依赖发射期静默机制；双口同时插不打架，固件只认收到保活的那个口，K 头优先）。
+
+**上电验证顺序**（K1 到手后逐项过）：
+
+```bash
+python -m k1remote --list-ports                    # ① radio 组出现 ttyACM*（标注"疑似 K1/K5 V3"）
+python tools/serial_probe.py -p /dev/ttyACM0 \
+    --features 0x01                                # ② 屏幕流 + 注入（--features 缺省 0，v3 必须显式给 RF Log 位）
+python tools/serial_probe.py -p /dev/ttyACM0 --features 0x01 \
+    --save capture --no-render                      # ③ 存原始流，检查 capture.bin 中 55 AA 05 帧头确认 RF Log 在发
+python tools/serial_probe.py --ptt-test 1.5        # ④ AIOC 电平 PTT 回归（K 型口）
+python -m k1remote                                 # ⑤ 全链路：variant=auto 应打印"推断固件变体: v3"
+```
+
+⑤ 的验收：屏幕镜像 ≥3fps、虚拟键盘生效、收发记录出现 RF Log 行、状态条显示电池电压与
+当前信道、PTT 键上/释放干净；服务端检测到深睡标志会自动注入 EXIT 唤醒（部署仍建议 SetOff=OFF）。
+
 ## 2. 软件部署
 
 **Windows（PowerShell，系统自带 ssh/scp）：**
@@ -91,8 +136,9 @@ WireGuard 隧道 IP——install.sh 自动处理），之后换 IP、跨网段�
 
 | 现象 | 处理 |
 |---|---|
+| PTT 按了没反应（屏幕流正常、UI 显示发射中） | ① 先排除电台侧：拔下 AIOC 用镊子短接 3.5mm 插头 sleeve↔GND（2.5mm 杆部），红灯应亮——不亮再试 tip；② 排除驱动层：`python -c "..."` 用 TIOCMGET 确认断言时 DTR=1/RTS=0；③ 排除线缆固件：AIOC 固件损坏时 DTR→PTT 路径整体失效（2026-11-04 实例），重刷官方固件即可修复：`sudo apt install dfu-util && sudo dfu-util -d 1209:7388 -a 0 -s 0x08000000:leave -D aioc-fw-1.4.1.bin`（固件从 [AIOC Releases](https://github.com/skuep/AIOC/releases) 下载；hw1.1 实测可用），刷后配置恢复默认无需重配 |
 | 服务起不来：串口打不开（Permission denied） | 用户未在 dialout 组：`sudo usermod -aG dialout pi` 后重新登录 |
-| 屏幕流没有 | 检查电台已开机且未深睡；`journalctl -u k1remote -f` 看保活；服务端有停滞自动唤醒 |
+| 屏幕流没有 | 检查电台已开机且未深睡；`journalctl -u k1remote -f` 看保活；服务端检测到深睡标志会自动注入 EXIT 唤醒 |
 | 收听无声 | `journalctl` 找 "声卡采集已启动"；`tools/audio_loopback.py --meter` 验证 AIOC 输入 |
 | 发话电台无声音 | 看日志"发话输出设备"行：Pi 上 AIOC 名为 "All-In-One-Cable: USB Audio"（服务端自动匹配）；仍不行用 `audio_loopback.py --sine` + 电平 PTT 验证硬件通路；`tx_gain`/aioc-util 调电平 |
 | 收听有爆音（咔/哒声） | ① `python tools/audio_loopback.py --diag` 输出贴出（看服务端选中的设备与 USB 休眠状态）；② `journalctl -u k1remote | grep "音频诊断"` 看 积压裁剪/迟到/溢出 计数——裁剪增长=树莓派负载或事件循环停顿；溢出增长=USB/ALSA 层；③ 对照：电台自己喇叭是否同样爆（有=电台/EMI 侧）；④ 菜单导航时爆音变密 = 屏幕数据干扰（反馈给开发者） |

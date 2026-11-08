@@ -122,6 +122,21 @@ main {
 }
 .side-card h2 small { color: var(--muted); font-weight: 400; margin-left: 6px; }
 
+.rfstate {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font: 12px/1.4 Consolas, monospace;
+  color: var(--text);
+  background: #0e1319;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 5px 8px;
+  margin-bottom: 8px;
+}
+.rfstate #rf-batt { white-space: nowrap; }
+.rfstate #rf-ch { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 .rflog { display: flex; flex-direction: column; gap: 6px; max-height: 260px; overflow-y: auto; }
 .rflog .empty { color: var(--muted); margin: 0; }
 

@@ -88,6 +88,7 @@ variant = "auto"       # auto=按串口类型推断（缺省）/ v1 / v3 显式�
 [audio]
 device = "AIOC"        # 收音输入设备（缺省自动匹配 AIOC）
 output_device = "AIOC" # 发话输出设备
+capture_latency = 0.2  # 采集缓冲目标时长（秒）：深缓冲吸收调度扰动防周期性卡顿，不增延迟
 rx_gain = 3.0          # 收听软件增益（音量小就调大，1-8；过大放大底噪）
 tx_gain = 1.0          # 发话软件增益（对方电台听着小就调大，过大过调）
 

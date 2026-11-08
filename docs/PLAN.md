@@ -26,6 +26,23 @@
 > 已排除：K1 固件写死 38400（uart.c:102）且为 CPS/UV Studio 写频标准速率，不可改。
 > 遗留待查：两块 AIOC 寄存器 GET 均返回全零（刷 1.4.1 后依旧，判别工具 GET 通道
 > 问题，不影响 PTT；可装 aioc-util 交叉验证）。
+> 2026-11-08 收听周期性卡顿收官（"音频诊断"采集溢出持续增长 ~12/30s ≈ 每 2.5s
+> 丢一帧，接收听感咔哒/吞字）：根因 = **40ms ALSA 小缓冲 + 任意 >40ms 调度扰动
+> 的结构性脆弱**。`latency="low"` 在 AIOC（全速 USB；PortAudio 拿不到其输入延迟
+> 元数据，报 -1）上配出 period 960×2 的极小采集环；主线程 GIL 被 aiortc 纯
+> Python 逐样本电平计算 `compute_audio_level_dbov`（960 次/帧 × 50 帧/s）等
+> 占用，声卡回调线程偶发排队超窗 → ALSA XRUN → PortAudio 恢复路径与内核指针
+> 失同步后自维持。**升频实测无效**（performance governor 下溢出率不变；并已
+> 排除 cgroup 限流/Wi-Fi 省电/温度/网络路径/USB 错误/py-spy 未见忙等）。
+> 修复：① 采集缓冲目标 40ms→200ms（`audio.capture_latency` 可配；深缓冲只吸收
+> 扰动、不增稳态延迟——PA 线程仍按帧读取，消费节奏由音轨水位控制跟随采集时钟，
+> 稳态积压仍 ~3 帧）；② monkeypatch `compute_audio_level_dbov` 为 numpy 向量化
+> （RFC 6465 语义不变，41 用例数值零差异）+ AudioMeter.update 向量化。设备端
+> 自测 180s（含此前最严重的会话建立突发期）：溢出/欠载诊断 0 条（修复前
+> 60-100+），50fps 满帧率。发射链路同期 6 次 PTT ~63s 内核级监测（hw_ptr 回退
+> + XRUN 状态）0 欠载——其上游有 500ms FIFO 且暴露仅限 PTT 突发，无需同款
+> 加固；如遇对方反馈发射毛刺，可给 SoundCardSink 加 output_latency（代价
+> +~100ms 发话延迟）。
 
 ---
 

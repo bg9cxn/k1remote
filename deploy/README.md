@@ -141,7 +141,7 @@ WireGuard 隧道 IP——install.sh 自动处理），之后换 IP、跨网段�
 | 屏幕流没有 | 检查电台已开机且未深睡；`journalctl -u k1remote -f` 看保活；服务端检测到深睡标志会自动注入 EXIT 唤醒 |
 | 收听无声 | `journalctl` 找 "声卡采集已启动"；`tools/audio_loopback.py --meter` 验证 AIOC 输入 |
 | 发话电台无声音 | 看日志"发话输出设备"行：Pi 上 AIOC 名为 "All-In-One-Cable: USB Audio"（服务端自动匹配）；仍不行用 `audio_loopback.py --sine` + 电平 PTT 验证硬件通路；`tx_gain`/aioc-util 调电平 |
-| 收听有爆音（咔/哒声） | ① `python tools/audio_loopback.py --diag` 输出贴出（看服务端选中的设备与 USB 休眠状态）；② `journalctl -u k1remote | grep "音频诊断"` 看 积压裁剪/迟到/溢出 计数——裁剪增长=树莓派负载或事件循环停顿；溢出增长=USB/ALSA 层；③ 对照：电台自己喇叭是否同样爆（有=电台/EMI 侧）；④ 菜单导航时爆音变密 = 屏幕数据干扰（反馈给开发者） |
+| 收听有爆音（咔/哒声） | ① `python tools/audio_loopback.py --diag` 输出贴出（看服务端选中的设备与 USB 休眠状态）；② `journalctl -u k1remote \| grep "音频诊断"` 看 积压裁剪/迟到/溢出 计数——裁剪增长=树莓派负载或事件循环停顿；溢出增长=USB/ALSA 层；③ 对照：电台自己喇叭是否同样爆（有=电台/EMI 侧）；④ 菜单导航时爆音变密 = 屏幕数据干扰（反馈给开发者）；⑤ **溢出持续增长的已定位根因与修复（2026-11-08）**：40ms ALSA 小缓冲 + 调度扰动超窗 → XRUN 自维持（升频实测无效，详见 PLAN.md 排查记录）——已默认修复（`capture_latency=0.2` 深缓冲 + aiortc 电平计算向量化）；"音频诊断"行仅在异常时打印，**完全消失即健康** |
 | USB 掉线/设备消失 | 禁用 USB 自动休眠：`sudo sh -c 'echo -1 > /sys/module/usbcore/parameters/autosuspend'`（永久：内核启动参数加 `usbcore.autosuspend=-1`）；磁环/地网/降功率 |
 | 延迟大 | 确认浏览器较新（jitterBufferTarget）；确认走的是局域网/WG 隧道而非公网中转 |
 | USB 掉线（发射时） | EMI：降功率、磁环、地网；掉线后服务端自动重连 |

@@ -9,9 +9,11 @@ from __future__ import annotations
 import asyncio
 import fractions
 import logging
+import math
 import time
 from typing import Optional
 
+import aiortc.rtp
 import numpy as np
 from aiortc import RTCPeerConnection, RTCSessionDescription, RTCConfiguration
 from aiortc.mediastreams import AudioStreamTrack
@@ -25,6 +27,31 @@ from .audio import (
 )
 
 log = logging.getLogger(__name__)
+
+
+def _fast_audio_level_dbov(frame) -> int:
+    """aiortc ``compute_audio_level_dbov`` 的 numpy 向量化实现（RFC 6465，结果一致）。
+
+    aiortc 1.x 原版对每帧逐样本做纯 Python 循环（960 次/帧 × 50 帧/秒），是
+    主线程 GIL 的最大占用块；它与声卡回调线程争抢 GIL，会把仅 40ms 的 ALSA
+    采集缓冲拖到 XRUN——对讲机收听周期性卡顿（日志"采集溢出"持续增长）的
+    根因。向量化后计算快约 50 倍，语义与原版一致。
+    """
+    data = bytes(frame.planes[0])
+    if len(data) < 2:
+        return -127
+    arr = np.frombuffer(data[:len(data) - len(data) % 2], dtype=np.int16)
+    rms = math.sqrt(float(np.mean(arr.astype(np.float64) ** 2))) / 32767.0
+    if rms > 0:
+        db = min(0, max(-127, 20 * math.log10(rms)))
+    else:
+        db = -127
+    return round(db)
+
+
+# rtcrtpsender 按模块属性调用（rtp.compute_audio_level_dbov），
+# 导入期替换模块属性即可全局生效，须在首个 RTCPeerConnection 创建前执行。
+aiortc.rtp.compute_audio_level_dbov = _fast_audio_level_dbov
 
 
 class RadioAudioTrack(AudioStreamTrack):

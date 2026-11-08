@@ -59,6 +59,8 @@ class AudioConfig:
     rate: int = 48000  # AIOC 原生 48kHz 单声道
     rx_gain: float = 1.0  # 收听软件增益（1-8，过大放大底噪）
     tx_gain: float = 1.0  # 发话软件增益（影响对讲机调制深度，过大过调）
+    capture_latency: float = 0.2  # 采集缓冲目标时长（秒）：深缓冲吸收调度扰动防 XRUN，
+    # 不增加稳态延迟（消费仍按帧节奏跟随采集时钟）；0.05≈原 low latency 行为
 
 
 @dataclass

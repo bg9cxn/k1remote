@@ -104,7 +104,8 @@ def main(argv: Optional[list] = None) -> None:
             ptt_shared=ptt_shared,
         )
         audio_source = SoundCardSource(device=cfg.audio.device or None, rate=cfg.audio.rate,
-                                       gain=cfg.audio.rx_gain)
+                                       gain=cfg.audio.rx_gain,
+                                       latency=cfg.audio.capture_latency)
         sink = SoundCardSink(device=cfg.audio.output_device or None, rate=cfg.audio.rate,
                              gain=cfg.audio.tx_gain)
 

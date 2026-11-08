@@ -144,13 +144,20 @@ class SoundCardSource(AudioSource):
     不抢帧。单会话延迟/时钟设计不变：会话队列硬上限 15 帧（300ms），消费
     速率由音轨按队列水位比例调节，自动跟随 AIOC 采集时钟。溢出计数用于
     诊断 USB/ALSA 层问题。
+
+    缓冲深度（latency）：AIOC 全速 USB + 40ms 小缓冲时，任何 >40ms 的调度
+    扰动（会话建立突发/GIL 波动/XRUN 恢复失步）都会让 ALSA 环打满丢帧，
+    表现为收听周期性卡顿（"音频诊断"采集溢出持续增长）。目标 200ms 的
+    深缓冲只吸收扰动、不增加延迟——PA 线程仍"有一帧读一帧"，消费节奏
+    由音轨水位控制跟随采集时钟，稳态积压仍是 ~3 帧。
     """
 
     def __init__(self, device: Optional[str] = None, rate: int = RATE,
-                 gain: float = 1.0) -> None:
+                 gain: float = 1.0, latency: float = 0.2) -> None:
         self.device_name = device
         self.rate = rate
         self.gain = gain
+        self.latency = latency  # ALSA/PortAudio 缓冲目标时长（秒）
         self._taps: list[SourceTap] = []
         self.overruns = 0  # 采集回调 status 警告（ALSA/USB 层丢帧）
         self._stream = None
@@ -178,10 +185,11 @@ class SoundCardSource(AudioSource):
         self._stream = sd.InputStream(
             samplerate=self.rate, channels=1, dtype="int16",
             blocksize=SAMPLES_PER_FRAME, device=device_id,
-            latency="low",
+            latency=self.latency,
             callback=self._on_audio)
         self._stream.start()
-        log.info("声卡采集已启动: %s @ %dHz (low latency)", device_id, self.rate)
+        log.info("声卡采集已启动: %s @ %dHz (latency=%.2fs)", device_id, self.rate,
+                 self.latency)
 
     def _resolve_device(self, sd) -> Optional[int]:
         idx, note = pick_device(sd.query_devices(), self.device_name, is_input=True)
@@ -246,14 +254,11 @@ class AudioMeter:
         if now - self._last_update < 0.25:
             return
         self._last_update = now
-        count = len(frame) // 2
-        if not count:
+        if len(frame) < 2:
             return
-        acc = 0
-        for i in range(0, len(frame), 2):
-            sample = struct.unpack_from("<h", frame, i)[0]
-            acc += sample * sample
-        rms = math.sqrt(acc / count)
+        # numpy 向量化（原来逐样本 struct 循环会占用主线程 GIL）
+        arr = np.frombuffer(frame[:len(frame) - len(frame) % 2], dtype=np.int16)
+        rms = math.sqrt(float(np.mean(arr.astype(np.float64) ** 2)))
         self.dbfs = 20 * math.log10(rms / 32768.0) if rms > 0 else -120.0
 
 

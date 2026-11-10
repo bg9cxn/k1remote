@@ -54,6 +54,37 @@ def _fast_audio_level_dbov(frame) -> int:
 aiortc.rtp.compute_audio_level_dbov = _fast_audio_level_dbov
 
 
+# ---- 编码器工厂：下行（收听）音频优先用带内 FEC 编码器 ----
+# aiortc 的编码链只会在 SDP 声明 useinbandfec=1，从不真正生成 FEC；公网丢包
+# 全靠接收端 PLC 合成（"数码音"）。系统 libopus 可用且 fec_loss_perc > 0 时
+# 用带 LBRR 冗余的实现替代，否则回退 aiortc 原生（仅无 FEC，无功能损失）。
+# 预期丢包率由 __main__ 按配置覆写（set_fec_loss_perc）。
+import aiortc.rtcrtpsender
+
+from .opus_fec import FecOpusEncoder
+
+fec_loss_perc = 10
+
+_orig_get_encoder = aiortc.rtcrtpsender.get_encoder
+
+
+def set_fec_loss_perc(loss: int) -> None:
+    global fec_loss_perc
+    fec_loss_perc = max(0, int(loss))
+
+
+def _get_encoder(codec):
+    if codec.name == "opus" and fec_loss_perc > 0:
+        try:
+            return FecOpusEncoder(fec_loss_perc)
+        except Exception as exc:
+            log.warning("FEC 编码器不可用，回退 aiortc 原生: %s", exc)
+    return _orig_get_encoder(codec)
+
+
+aiortc.rtcrtpsender.get_encoder = _get_encoder
+
+
 class RadioAudioTrack(AudioStreamTrack):
     """按队列水位比例调节消费速率，从 AudioSource 拉 20ms 帧。
 
@@ -160,6 +191,7 @@ class WebRTCService:
         self._pcs: set = set()
         self._peer_taps: dict = {}  # pc -> SourceTap
         self._peer_mics: dict = {}  # pc -> peer_id
+        self._net_tasks: dict = {}  # pc -> 网络质量日志任务
         self._active_mic: Optional[str] = None
 
     async def handle_offer(self, sdp: str, mline_index: int = 0) -> dict:
@@ -176,6 +208,9 @@ class WebRTCService:
         async def on_state() -> None:
             log.info("WebRTC %s: %s", peer_id, pc.connectionState)
             if pc.connectionState in ("failed", "closed"):
+                task = self._net_tasks.pop(pc, None)
+                if task is not None:
+                    task.cancel()
                 self._pcs.discard(pc)
                 t = self._peer_taps.pop(pc, None)
                 if t is not None:
@@ -208,10 +243,51 @@ class WebRTCService:
             asyncio.ensure_future(consume())
 
         pc.addTrack(RadioAudioTrack(tap, self.meter))
+        self._net_tasks[pc] = asyncio.ensure_future(
+            self._network_report(pc, peer_id))
         await pc.setRemoteDescription(RTCSessionDescription(sdp=sdp, type="offer"))
         answer = await pc.createAnswer()
         await pc.setLocalDescription(answer)
         return {"t": "rtc-answer", "sdp": pc.localDescription.sdp}
+
+    async def _network_report(self, pc, peer_id: str) -> None:
+        """每 30s 从 RTCP 接收报告读网络质量并记入日志。
+
+        remote-inbound-rtp = 浏览器对下行（收听）音频的实测——丢包率/jitter/RTT
+        正是用户听感对应的网络指标；inbound-rtp = 上行（发话）到 Pi 的到达质量。
+        fraction_lost 是 RFC3550 的 0-255 计数（×256 缩放），jitter 为 RTP 时间戳
+        单位（1/48000 s）。
+        """
+        try:
+            while pc.connectionState not in ("failed", "closed"):
+                await asyncio.sleep(30.0)
+                try:
+                    stats = await pc.getStats()
+                except Exception:
+                    continue
+                rr = rx = None
+                for s in stats.values():
+                    st = getattr(s, "type", None)
+                    if st == "remote-inbound-rtp":
+                        rr = s
+                    elif st == "inbound-rtp":
+                        rx = s
+                parts = []
+                if rr is not None:
+                    parts.append("下行(收听): 丢包率%.1f%% 抖动%.0fms RTT%.0fms" % (
+                        min(100.0, (getattr(rr, "fractionLost", 0) or 0) * 100.0 / 256.0),
+                        (getattr(rr, "jitter", 0) or 0) * 1000.0 / 48000.0,
+                        (getattr(rr, "roundTripTime", 0) or 0) * 1000.0))
+                if rx is not None:
+                    parts.append("上行(发话): 丢包%s帧 抖动%.0fms" % (
+                        getattr(rx, "packets_lost", "?"),
+                        (getattr(rx, "jitter", 0) or 0) * 1000.0 / 48000.0))
+                if parts:
+                    log.info("WebRTC %s 网络: %s", peer_id, " | ".join(parts))
+        except asyncio.CancelledError:
+            pass
+        except Exception:
+            log.debug("WebRTC %s 网络统计循环退出", peer_id, exc_info=True)
 
     async def close(self) -> None:
         for pc in list(self._pcs):

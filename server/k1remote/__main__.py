@@ -16,7 +16,7 @@ from .radio.aioc import AiocPtt
 from .radio.demo import DemoRadio
 from .radio.k5viewer import K5ViewerClient
 from .radio.ports import guess_variant, list_serial_ports, pick_aioc_port, pick_radio_port
-from .webrtc import WebRTCService
+from .webrtc import WebRTCService, set_fec_loss_perc
 from .webapp import run
 
 
@@ -134,6 +134,7 @@ def main(argv: Optional[list] = None) -> None:
                              gain=cfg.audio.tx_gain)
 
     webrtc = WebRTCService(audio_source, sink=sink)
+    set_fec_loss_perc(cfg.audio.rx_fec_loss)
     run(cfg, radio, webrtc)
 
     # run() 返回时串口/声卡/PTT/任务均已显式清理。残留的 C 线程

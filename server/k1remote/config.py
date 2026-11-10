@@ -83,6 +83,8 @@ class AudioConfig:
     tx_gain: float = 1.0  # 发话软件增益（影响对讲机调制深度，过大过调）
     capture_latency: float = 0.2  # 采集缓冲目标时长（秒）：深缓冲吸收调度扰动防 XRUN，
     # 不增加稳态延迟（消费仍按帧节奏跟随采集时钟）；0.05≈原 low latency 行为
+    rx_fec_loss: int = 10  # 下行 Opus 带内 FEC 的预期丢包率（%）：0=关闭并回退
+    # aiortc 原生编码器；系统 libopus 缺失时也自动回退
 
 
 @dataclass

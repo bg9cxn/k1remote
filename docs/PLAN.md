@@ -43,6 +43,23 @@
 > + XRUN 状态）0 欠载——其上游有 500ms FIFO 且暴露仅限 PTT 突发，无需同款
 > 加固；如遇对方反馈发射毛刺，可给 SoundCardSink 加 output_latency（代价
 > +~100ms 发话延迟）。
+> 2026-11-10 残余"偶尔卡顿+数码音"收官（采集层修复后仍偶发）：根因 = **公网
+> 传输丢包/抖动**，与采集层问题不同源。webrtc-internals 实测（手机 Wi-Fi 接入
+> 142s 会话）：真丢包 1.85%（131/7086）、PLC 补帧 144,709 样本、concealment
+> events 31 次（≈每 4.6s 一次）、瞬时补帧率 10.8%、interruption 5 次/1.45s、
+> 手机 ping 8→712ms 尖峰（Wi-Fi 省电休眠指纹）；隧道 RTT 25-183ms（均值 83ms），
+> 浏览器 jitterBufferTarget=100ms 装不下这种尖峰。另发现 **FEC 声明了但从未
+> 生成**：aiortc 只在 SDP 写 useinbandfec=1，编码链（PyAV/FFmpeg libopus 封装）
+> 不暴露 OPUS_SET_INBAND_FEC，fecPacketsReceived 恒 0。
+> 修复：① `opus_fec.py` ctypes 直连系统 libopus（Debian 自带 libopus0 1.3.1，
+> 零新增依赖）自建编码器：application=voip + INBAND_FEC=1 + packet_loss=10%
+> （`audio.rx_fec_loss` 可配，0=关闭；libopus 缺失自动回退 aiortc 原生），丢帧
+> 由下一包 LBRR 冗余恢复；设备实测 FEC 编码 +33% 字节（冗余真实生效）、1:1 包率、
+> 时间戳步进正确、往返解码正常；② `WebRTC` 会话每 30s 记录 RTCP 实测网络质量
+> （下行丢包率/抖动/RTT + 上行丢包），journalctl 直接可看。
+> 运维注：手机 Wi-Fi 省电休眠造成的 712ms 级延迟尖峰 FEC 救不了（那是 NetEQ
+> 迟到丢弃）——插电/关省电/5GHz/近 AP 可显著缓解；验证指标 = webrtc-internals
+> 的 fecPacketsReceived（应 >0）与 concealedSamples 增速、concealmentEvents 频率。
 
 ---
 

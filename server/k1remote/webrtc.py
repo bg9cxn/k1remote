@@ -280,7 +280,7 @@ class WebRTCService:
                         (getattr(rr, "roundTripTime", 0) or 0) * 1000.0))
                 if rx is not None:
                     parts.append("上行(发话): 丢包%s帧 抖动%.0fms" % (
-                        getattr(rx, "packets_lost", "?"),
+                        getattr(rx, "packetsLost", "?"),
                         (getattr(rx, "jitter", 0) or 0) * 1000.0 / 48000.0))
                 if parts:
                     log.info("WebRTC %s 网络: %s", peer_id, " | ".join(parts))

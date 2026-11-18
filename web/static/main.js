@@ -14,6 +14,16 @@ const ledRx = $("led-rx");
 const ledTx = $("led-tx");
 const rflogBox = $("rflog");
 
+/* RX/TX 灯驱动源：固件 LED 标志（binary byte1 / status 消息）OR 服务端 PTT 状态。
+   发射保持期固件静默（k5viewer 按键保持门扣流，红标边沿永远送不出），
+   TX 灯必须并入 pttHeld（服务端 AIOC PTT 广播）才能点亮。 */
+let fwFlags = 0;
+
+function updateLeds() {
+  ledRx.classList.toggle("active", !!(fwFlags & 0x04));
+  ledTx.classList.toggle("active", !!(fwFlags & 0x02) || pttHeld);
+}
+
 let ws = null;
 let reconnectDelay = 1000;
 
@@ -54,6 +64,8 @@ function connect() {
 function handleBinary(buf) {
   const view = new Uint8Array(buf);
   if (view[0] !== 0x01 || view.length < 2 + 1024) return;
+  fwFlags = view[1]; // bit1=红/TX，bit2=绿/RX
+  updateLeds();
   drawScreen(view.subarray(2));
 }
 
@@ -80,8 +92,9 @@ function handleJson(msg) {
     case "hello":
     case "status":
       dotRadio.classList.toggle("on", !!msg.radio);
-      ledRx.classList.toggle("active", !!msg.rx);
-      ledTx.classList.toggle("active", !!msg.tx);
+      fwFlags = (msg.tx ? 0x02 : 0) | (msg.rx ? 0x04 : 0);
+      updateLeds();
+      if (msg.t === "hello" && "ptt" in msg) setPttHeld(!!msg.ptt); // 接入即同步"他人正在发射"
       if (msg.rf) renderRfState(msg.rf); // hello 快照携带最近 RF Log 行
       break;
     case "rflog":
@@ -126,7 +139,7 @@ function renderRfLog(rows) {
   while (rflogBox.children.length > 12) rflogBox.lastChild.remove();
 }
 
-/* 电池电压/当前频率/信道：仅 K1/K5 V3（v3 变体）经 RF Log 上报；v1 上保持占位 */
+/* 电池电压/当前频率/信道：仅 K1/K5 V3（k1k5v3 变体）经 RF Log 上报；k5v1 上保持占位 */
 function renderRfState(r) {
   if (!r) return;
   $("rf-batt").textContent = r.volts != null ? `🔋 ${r.volts.toFixed(2)}V` : "🔋 —";
@@ -374,6 +387,7 @@ window.addEventListener("keyup", (e) => {
 function setPttHeld(held) {
   pttHeld = held;
   updatePttUi();
+  updateLeds();
   if (held) {
     const start = Date.now();
     clearInterval(ptxTimerInterval);

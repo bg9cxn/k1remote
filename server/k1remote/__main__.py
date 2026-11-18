@@ -25,11 +25,11 @@ def main(argv: Optional[list] = None) -> None:
         prog="k1remote", description="UV-K5 远程工作站服务端")
     parser.add_argument("-c", "--config", help="TOML 配置文件路径（缺省用内置默认值）")
     parser.add_argument("-p", "--port", help="对讲机串口（覆盖配置；auto 为自动识别）")
-    parser.add_argument("--variant", choices=("v1", "v3"),
-                        help="固件变体：v1=uv-k5-firmware-custom-remote(UART 38400)，"
-                             "v3=uv-k1-k5v3(USB CDC+RF Log)；覆盖配置。缺省 auto："
-                             "按串口类型推断（Linux ttyACM→v3、ttyUSB→v1；Windows "
-                             "区分不了 COM 口的 CDC/桥，回落 v1）")
+    parser.add_argument("--variant", choices=("k5v1", "k1k5v3"),
+                        help="固件变体：k5v1=uv-k5-firmware-custom-remote(UART 38400)，"
+                             "k1k5v3=uv-k1-k5v3(USB CDC+RF Log，K1/K5 V3 双硬件)；覆盖配置。"
+                             "缺省 auto：按串口类型推断（Linux ttyACM→k1k5v3、ttyUSB→k5v1；"
+                             "Windows 区分不了 COM 口的 CDC/桥，回落 k5v1）")
     parser.add_argument("--baud", type=int, help="串口波特率（覆盖配置与变体缺省）")
     parser.add_argument("--host", help="Web 监听地址（覆盖配置）")
     parser.add_argument("--http-port", type=int, help="Web 监听端口（覆盖配置）")
@@ -55,8 +55,8 @@ def main(argv: Optional[list] = None) -> None:
                 hint = ""
                 if group == "radio":
                     g = guess_variant(p.device)
-                    hint = {"v3": "  ← CDC，疑似 K1/K5 V3",
-                            "v1": "  ← UART 桥，疑似 V1"}.get(g, "")
+                    hint = {"k1k5v3": "  ← CDC，疑似 K1/K5 V3",
+                            "k5v1": "  ← UART 桥，疑似 UV-K5 V1"}.get(g, "")
                 print(f"{group:6s} {p.device:20s} {p.description}{hint}")
         return
 
@@ -84,19 +84,19 @@ def main(argv: Optional[list] = None) -> None:
         if port == "auto":
             picked = pick_radio_port(list_serial_ports())
             if picked is None:
-                # V1 单线方案：对讲机与 AIOC 共用串口。仅 v1 适用——v3 推荐
+                # k5v1 单线方案：对讲机与 AIOC 共用串口。仅 k5v1 适用——k1k5v3 推荐
                 # Type-C 传数据（K 头让给 AIOC 音频/PTT，规避 Sleeve 上数据与
                 # PTT1 的仲裁）；K 头 UART（38400）虽也可推流，但 auto 无法按
-                # 设备名区分，故 AIOC 同口回退仅限 v1。
-                if aioc_port and cfg.radio.variant in ("auto", "v1"):
+                # 设备名区分，故 AIOC 同口回退仅限 k5v1。
+                if aioc_port and cfg.radio.variant in ("auto", "k5v1"):
                     port = aioc_port
                     if cfg.radio.variant == "auto":
-                        cfg.radio.variant = "v1"  # 单线即 v1；AIOC 自己也是 CDC，不能按设备名推断
-                    print(f"未发现独立对讲机串口，使用 AIOC 同口（V1 单线）: {port}")
-                elif cfg.radio.variant == "v3":
+                        cfg.radio.variant = "k5v1"  # 单线即 k5v1；AIOC 自己也是 CDC，不能按设备名推断
+                    print(f"未发现独立对讲机串口，使用 AIOC 同口（k5v1 单线）: {port}")
+                elif cfg.radio.variant == "k1k5v3":
                     parser.error("未发现 K1/K5 V3 的 USB CDC 串口：双线部署请插机身 "
                                  "USB-C 数据线（Linux 枚举为 /dev/ttyACM*）；应急可走 "
-                                 "K 头 AIOC 单线：--port <AIOC口> --variant v3 --baud 38400")
+                                 "K 头 AIOC 单线：--port <AIOC口> --variant k1k5v3 --baud 38400")
                 else:
                     parser.error("未找到对讲机串口：请插入设备或用 --port 指定"
                                  "（--list-ports 查看识别结果）")
@@ -105,12 +105,12 @@ def main(argv: Optional[list] = None) -> None:
                 print(f"自动识别对讲机串口: {port}")
         if cfg.radio.variant == "auto":
             guessed = guess_variant(port)
-            cfg.radio.variant = guessed or "v1"
+            cfg.radio.variant = guessed or "k5v1"
             if guessed:
                 print(f"按串口类型推断固件变体: {cfg.radio.variant}")
             else:
                 print("无法从串口类型判断固件变体（Windows 下 CDC 与 UART 桥同为 COM*），"
-                      "按 v1 处理；K1/K5 V3 请 --variant v3")
+                      "按 k5v1 处理；K1/K5 V3 请 --variant k1k5v3")
         baud = cfg.radio.resolved_baud()
         features = cfg.radio.resolved_features()
         ptt_shared = bool(aioc_port and aioc_port == port)

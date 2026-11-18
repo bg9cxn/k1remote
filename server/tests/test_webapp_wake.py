@@ -40,7 +40,7 @@ def test_min_interval_between_wakes():
     assert should_wake(FLAG_DEEP_SLEEP, NOW - 1.0, NOW - 10.5, NOW)
 
 
-# ---- Hub：最近 RF Log 行缓存（hello 快照数据源，v3 专属） ----
+# ---- Hub：最近 RF Log 行缓存（hello 快照数据源，k1k5v3 专属） ----
 
 
 def _wrap_frame(ftype: int, payload: bytes, flags: int = 0) -> bytes:

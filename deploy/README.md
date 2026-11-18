@@ -16,16 +16,16 @@
 - 树莓派供电建议 UPS/充电宝方案；WiFi 或有线接入路由。
 - EMI 防护：天线加地网（tiger tail）或磁环，避免发射时 USB 掉线。
 
-## 1.5 K1 / K5 V3 硬件（v3 变体）
+## 1.5 K1 / K5 V3 硬件（k1k5v3 变体）
 
-K 型口仍保留 38400 UART（与 V1 完全相同，CPS 写频与 K5Viewer 推流均可用，固件每个
+K 型口仍保留 38400 UART（与 k5v1 完全相同，CPS 写频与 K5Viewer 推流均可用，固件每个
 主循环 tick 优先检测 K 头，`App/k5viewer.c`）；机身 Type-C 为新增的并行数据口
 （USB CDC，Linux 枚举为 `/dev/ttyACM*`）。
 
 **部署定稿双线：Type-C 传数据 + K 型口 AIOC 传音频/PTT**——带宽富余（RF Log 实时包
 1.6KB 在 38400 下需 ~420ms，CDC 无压力）、数据与 PTT1 无共触点（无 TXFRCPTT 仲裁
 约束）、`variant = "auto"` 按串口类型零参数识别（Windows 下 CDC 也枚举为 `COM*`
-区分不了，需显式 `--variant v3`）。
+区分不了，需显式 `--variant k1k5v3`）。
 
 **刷机（一次性）**——固件须为启用 K5VIEWER 的 F4HWN **Fusion** 版
 （单镜像同时兼容 K1 与 K5 V3；成品在固件仓 `uv-k1-k5v3-firmware-custom/archive/`）：
@@ -43,7 +43,7 @@ K 型口仍保留 38400 UART（与 V1 完全相同，CPS 写频与 K5Viewer 推�
 
 连接（定稿双线）：机身 USB-C → 树莓派（数据），K 型口 ← AIOC → 树莓派（音频 + PTT）。
 应急单线：手头没有 USB-C 数据线时，也可 K 型口 AIOC 一线全包（数据走 K 头 38400 UART）——
-`python -m k1remote --port <AIOC口> --variant v3 --baud 38400`
+`python -m k1remote --port <AIOC口> --variant k1k5v3 --baud 38400`
 （屏幕较慢，且依赖发射期静默机制；双口同时插不打架，固件只认收到保活的那个口，K 头优先）。
 
 **上电验证顺序**（K1 到手后逐项过）：
@@ -51,11 +51,11 @@ K 型口仍保留 38400 UART（与 V1 完全相同，CPS 写频与 K5Viewer 推�
 ```bash
 python -m k1remote --list-ports                    # ① radio 组出现 ttyACM*（标注"疑似 K1/K5 V3"）
 python tools/serial_probe.py -p /dev/ttyACM0 \
-    --features 0x01                                # ② 屏幕流 + 注入（--features 缺省 0，v3 必须显式给 RF Log 位）
+    --features 0x01                                # ② 屏幕流 + 注入（--features 缺省 0，k1k5v3 必须显式给 RF Log 位）
 python tools/serial_probe.py -p /dev/ttyACM0 --features 0x01 \
     --save capture --no-render                      # ③ 存原始流，检查 capture.bin 中 55 AA 05 帧头确认 RF Log 在发
 python tools/serial_probe.py --ptt-test 1.5        # ④ AIOC 电平 PTT 回归（K 型口）
-python -m k1remote                                 # ⑤ 全链路：variant=auto 应打印"推断固件变体: v3"
+python -m k1remote                                 # ⑤ 全链路：variant=auto 应打印"推断固件变体: k1k5v3"
 ```
 
 ⑤ 的验收：屏幕镜像 ≥3fps、虚拟键盘生效、收发记录出现 RF Log 行、状态条显示电池电压与
@@ -155,3 +155,7 @@ cd ~/k1remote
 venv/bin/pip install -e server
 sudo systemctl restart k1remote
 ```
+
+> **2026-11 变体改名**：固件变体 ID 由 `v1`/`v3` 改为 `k5v1`/`k1k5v3`（裸版本号与项目名
+> K1Remote 易混淆）。若 `server.toml` 仍写旧值，升级后启动会报"未知固件变体"并提示
+> 新写法——把 `variant = "v1"` 改为 `"k5v1"`、`"v3"` 改为 `"k1k5v3"` 即可。

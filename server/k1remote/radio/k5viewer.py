@@ -48,7 +48,7 @@ class K5ViewerClient:
         features: int = 0,
         reconnect_delay: float = 2.0,
         ptt=None,  # Optional[AiocPtt]
-        ptt_shared: bool = False,  # True: AIOC 与对讲机同一串口（V1 单线）
+        ptt_shared: bool = False,  # True: AIOC 与对讲机同一串口（k5v1 单线）
         on_frame: Optional[Callable[[Frame], None]] = None,
         on_state: Optional[Callable[[bool], None]] = None,
         on_error: Optional[Callable[[Exception], None]] = None,

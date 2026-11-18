@@ -87,12 +87,12 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="K5Viewer 串口探测")
     ap.add_argument("-p", "--port", help="对讲机串口（默认自动识别）")
     ap.add_argument("-b", "--baud", type=int, default=38400,
-                    help="波特率（v1 UART 固件=38400 缺省；v3 USB CDC 任意）")
+                    help="波特率（k5v1 UART 固件=38400 缺省；k1k5v3 USB CDC 任意）")
     ap.add_argument("--list", action="store_true", help="列出串口分类后退出")
     ap.add_argument("-d", "--duration", type=float, default=0, help="运行秒数（0 = Ctrl-C 退出）")
     ap.add_argument("--keepalive-ms", type=int, default=100)
     ap.add_argument("--features", type=lambda x: int(x, 0), default=0,
-                    help="保活扩展位（v3 固件 RF Log=0x1；v1 固件必须为 0）")
+                    help="保活扩展位（k1k5v3 固件 RF Log=0x1；k5v1 固件必须为 0）")
     ap.add_argument("--inject", help="注入按键，如 up 或 menu:long")
     ap.add_argument("--inject-delay", type=float, default=1.0)
     ap.add_argument("--aioc", help="AIOC 串口（PTT 测试用，默认自动识别）")
@@ -134,7 +134,7 @@ def main() -> None:
             if aioc:
                 raise SystemExit(
                     f"未自动识别到对讲机串口，只发现 AIOC({aioc.device})。"
-                    f"若对讲机是经 AIOC 连接的（V1 单线方案），用 -p {aioc.device} 显式指定")
+                    f"若对讲机是经 AIOC 连接的（k5v1 单线方案），用 -p {aioc.device} 显式指定")
             raise SystemExit(
                 "未自动识别到对讲机串口，发现: "
                 + ", ".join(f"{p.device}({p.description})" for p in ports)
@@ -153,7 +153,7 @@ def main() -> None:
             aioc_port = picked.device
         share_port = (aioc_port == port)
         print(f"AIOC PTT: {aioc_port}"
-              + ("（与对讲机串口共享句柄，V1 单线方案）" if share_port else ""))
+              + ("（与对讲机串口共享句柄，k5v1 单线方案）" if share_port else ""))
         ptt = AiocPtt(aioc_port)
 
     inject_key = inject_long = None

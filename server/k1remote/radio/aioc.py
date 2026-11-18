@@ -22,7 +22,7 @@ class AiocPtt:
 
     两种用法：
       - 独占模式：AiocPtt(port)，首次 set() 时自行打开串口；
-      - 共享模式：attach(ser) 绑定外部已打开的句柄——V1 单线方案下，同一
+      - 共享模式：attach(ser) 绑定外部已打开的句柄——k5v1 单线方案下，同一
         AIOC 串口既要跑 K5Viewer 协议又要控 PTT 电平，Windows 不允许双开，
         必须复用一个 serial 句柄。
     """

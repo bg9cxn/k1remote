@@ -1,9 +1,9 @@
 """串口设备识别：区分对讲机线缆与 AIOC 一体线。
 
 对讲机侧：
-  v1 硬件（uv-k5-firmware-custom-remote）经 K 型口编程线（CP2102/CH340/FTDI
-  等 USB-UART 桥，38400 波特）连接，枚举为 ttyUSB*/COM*；
-  v3 硬件（uv-k1-k5v3）为原生 USB CDC，枚举为 ttyACM*。
+  k5v1 硬件（UV-K5 V1，uv-k5-firmware-custom-remote）经 K 型口编程线
+  （CP2102/CH340/FTDI 等 USB-UART 桥，38400 波特）连接，枚举为 ttyUSB*/COM*；
+  k1k5v3 硬件（UV-K1 / UV-K5 V3，uv-k1-k5v3）为原生 USB CDC，枚举为 ttyACM*。
 自动识别策略：排除 AIOC 后取第一个 USB 串口（vid != 0）；板载 UART
 （/dev/ttyAMA0、/dev/ttyS* 等 vid == 0 的端口）不会自动选中；主机上有
 多个串口设备时用 --port 显式指定。
@@ -68,15 +68,15 @@ def pick_aioc_port(ports: Iterable[PortInfo]) -> Optional[PortInfo]:
 def guess_variant(device: str) -> Optional[str]:
     """按串口设备名推断固件变体（Linux 部署的启发式，供 variant=auto 落位）。
 
-    v3/K1 硬件是原生 USB CDC，Linux 枚举为 ttyACM*；v1 走 USB-UART 桥，
-    枚举为 ttyUSB*。Windows 的 CDC 与 UART 桥都叫 COM*，无法区分——返回
-    None，由调用方回落 v1 并提示显式 --variant。
+    k1k5v3（K1/K5 V3）硬件是原生 USB CDC，Linux 枚举为 ttyACM*；k5v1 走
+    USB-UART 桥，枚举为 ttyUSB*。Windows 的 CDC 与 UART 桥都叫 COM*，
+    无法区分——返回 None，由调用方回落 k5v1 并提示显式 --variant。
     """
     name = device.replace("\\", "/").rsplit("/", 1)[-1].lower()
     if name.startswith("ttyacm"):
-        return "v3"
+        return "k1k5v3"
     if name.startswith("ttyusb"):
-        return "v1"
+        return "k5v1"
     return None
 
 

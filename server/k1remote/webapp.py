@@ -4,9 +4,9 @@
     服务端 → 客户端
     二进制  [0x01][stateFlags][1024B 垂直字节帧缓冲]        屏幕帧
     文本    {"t":"hello","radio":bool,"tx":bool,"rx":bool,
-             "ptt":bool,"max_tx_s":num,"rf":row|null}        接入问候（rf=最近 RF Log 行，v3 专属）
+             "ptt":bool,"max_tx_s":num,"rf":row|null}        接入问候（rf=最近 RF Log 行，k1k5v3 专属）
     文本    {"t":"status","radio":bool,"tx":bool,"rx":bool}  连接/状态变化
-    文本    {"t":"rflog","rows":[{...}]}                     RF Log 活动行（v3 专属）
+    文本    {"t":"rflog","rows":[{...}]}                     RF Log 活动行（k1k5v3 专属）
   客户端 → 服务端
     文本    {"t":"key","key":"up","long":false}              注入按键
     文本    {"t":"ping"}                                     心跳
@@ -64,7 +64,7 @@ class Hub:
         self._loop_tid: Optional[int] = None
         self.last_screen_at: Optional[float] = None  # 最近收到屏幕帧的时刻
         self._last_wake_at: float = 0.0
-        self.last_rf_row: Optional[dict] = None  # 最近 RF Log 活动行（v3 专属，供快照）
+        self.last_rf_row: Optional[dict] = None  # 最近 RF Log 活动行（k1k5v3 专属，供快照）
 
     # ---- radio 线程回调（经 call_soon_threadsafe 封送）----
 

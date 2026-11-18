@@ -47,7 +47,7 @@ FEATURE_RF_LOG_RESTART = 0x80
 
 KEY_SHORT = 0x03
 KEY_LONG = 0x04
-PTT_HOLD = 0x06  # 自研 v1 固件扩展：AA 55 06 <0|1> = 串口 PTT 保持/释放（v3 不识别，无害）
+PTT_HOLD = 0x06  # 自研 k5v1 固件扩展：AA 55 06 <0|1> = 串口 PTT 保持/释放（k1k5v3 不识别，无害）
 
 
 class Key(enum.IntEnum):
@@ -100,7 +100,7 @@ def key_frame(key: Key, long_press: bool = False) -> bytes:
 
 
 def ptt_frame(hold: bool) -> bytes:
-    """串口 PTT 帧（自研 v1 固件扩展）：hold=True 键上发射，False 释放。
+    """串口 PTT 帧（自研 k5v1 固件扩展）：hold=True 键上发射，False 释放。
 
     释放保障：服务端看门狗必须主动发送 False；固件侧 TxTOut 兜底；标志为
     RAM 变量，对讲机断电自然清除。发射期间应暂停保活（避免 UART 数据混入

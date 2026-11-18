@@ -12,11 +12,11 @@ token = "change-me-please"
 # web_dir = ""             # 缺省自动定位仓库内 web/ 目录
 
 [radio]
-variant = "auto"           # auto=按串口类型推断（Linux: ttyACM→v3、ttyUSB→v1；Windows 回落 v1）/ v1 / v3 显式指定
+variant = "auto"           # auto=按串口类型推断（Linux: ttyACM→k1k5v3、ttyUSB→k5v1；Windows 回落 k5v1）/ k5v1 / k1k5v3 显式指定
 port = "auto"              # "auto" 自动识别，或显式 /dev/ttyACM0、/dev/ttyUSB0
-# baud = 38400             # 缺省按变体取值（v1=38400 / v3=115200 名义值），可覆盖
+# baud = 38400             # 缺省按变体取值（k5v1=38400 / k1k5v3=115200 名义值），可覆盖
 keepalive_ms = 100         # 屏幕流保活周期
-features = -1              # -1 = 按变体取缺省（v1=0，v3=RF_LOG）
+features = -1              # -1 = 按变体取缺省（k5v1=0，k1k5v3=RF_LOG）
 reconnect_s = 2.0          # 串口断线重连间隔
 max_tx_s = 180.0           # 最长连续发射（看门狗强制释放）；建议与电台 TxTOut 一致或略短
 tx_tail_ms = 400           # 松开 PTT 后的尾音保护（覆盖在途语音再撤电平）

@@ -4,23 +4,26 @@
 
 | 变体 | 固件仓库 | 硬件 | 物理链路 | 波特率 | RF Log 扩展 |
 |---|---|---|---|---|---|
-| **v1（已真机验证）** | `uv-k5-firmware-custom-remote` | UV-K5 V1（DP32G030） | K 型口编程线（CP2102/CH340 等 USB-UART 桥） | **38400** | 无 |
-| **v3（已支持）** | `uv-k1-k5v3-firmware-custom` | UV-K1 / UV-K5 V3（PY32F071） | K 头 UART 或机身 Type-C CDC（**推荐双线：Type-C 数据 + K 头 AIOC 音频/PTT**） | CDC 任意；K 头 38400 | 有 |
+| **k5v1（已真机验证）** | `uv-k5-firmware-custom-remote` | UV-K5 V1（DP32G030） | K 型口编程线（CP2102/CH340 等 USB-UART 桥） | **38400** | 无 |
+| **k1k5v3（已支持）** | `uv-k1-k5v3-firmware-custom` | UV-K1 / UV-K5 V3（PY32F071） | K 头 UART 或机身 Type-C CDC（**推荐双线：Type-C 数据 + K 头 AIOC 音频/PTT**） | CDC 任意；K 头 38400 | 有 |
 
-v3 数据口选择（固件双口支持，`App/k5viewer.c: K5VIEWER_ParseInput`）：K 头保留 38400 UART
-（与 V1 完全相同，CPS 写频与 K5Viewer 推流均可用），机身 Type-C 为新增并行 CDC 数据口。
+k1k5v3 数据口选择（固件双口支持，`App/k5viewer.c: K5VIEWER_ParseInput`）：K 头保留 38400 UART
+（与 k5v1 完全相同，CPS 写频与 K5Viewer 推流均可用），机身 Type-C 为新增并行 CDC 数据口。
 固件每个主循环 tick **先检测 K 头**（`UART_IsCableConnected`），K 头有合法字节即从 K 头推流；
 K 头安静才认 Type-C 保活（`VCP_K5ViewerPing`）——往哪个口发保活，流就从哪个口出，双口同时
 连接不会打架。推荐双线的理由：K 头让给 AIOC 专做音频+PTT（数据与 PTT1 无共触点，规避
 TXFRCPTT 仲裁），且 CDC 带宽富余（RF Log 实时包 1629B 在 38400 下需 ~420ms）。
 
 变体选择：配置缺省 `variant = "auto"`——按自动识别的对讲机串口类型推断
-（Linux：`ttyACM*`→v3、`ttyUSB*`→v1；Windows 的 CDC 与 UART 桥同为 `COM*`，
-无法区分，回落 v1 并提示显式 `--variant v3`）。
-v1 固件为用户在 Egzumer/F4HWN V1 固件基础上增加串口控制的版本（`k5viewer.c` 自 V3 移植）。
+（Linux：`ttyACM*`→k1k5v3、`ttyUSB*`→k5v1；Windows 的 CDC 与 UART 桥同为 `COM*`，
+无法区分，回落 k5v1 并提示显式 `--variant k1k5v3`）。
+k5v1 固件为用户在 Egzumer/F4HWN V1 固件基础上增加串口控制的版本（`k5viewer.c` 自 V3 移植）。
 屏幕流与按键注入协议两者一致，差异仅在物理层、保活扩展位与 RF Log 帧（见 §5）。
 
-## 1. 物理连接（v1）
+> 变体命名说明：2026-11 起变体 ID 由裸版本号 `v1`/`v3` 改为 `k5v1`（UV-K5 V1 硬件）/
+> `k1k5v3`（UV-K1 / UV-K5 V3 硬件，单镜像双硬件），避免与项目名 K1Remote 混淆。
+
+## 1. 物理连接（k5v1）
 
 - 对讲机 K 型两芯口 ← Baofeng/Kenwood 式编程线（USB-UART 桥）→ 主机，Linux 枚举为 `/dev/ttyUSB0`，Windows 为 `COM*`，**波特率 38400**（固件 `UART1->BAUD = 48M/39053`）。
 - 触点-方向表（K1 双 TRS 插头，对讲机视角；依据 AIOC 原理图 `kicad/k1-aioc`）：
@@ -45,10 +48,10 @@ v1 固件为用户在 Egzumer/F4HWN V1 固件基础上增加串口控制的版�
 | 保活 | `55 AA 00 00` | 必须**周期发送**（建议 100ms），否则固件停止推流 |
 | 注入短按键 | `AA 55 03 <keycode>` | 模拟一次短按 |
 | 注入长按键 | `AA 55 04 <keycode>` | 模拟一次长按 |
-| 串口 PTT（自研扩展） | `AA 55 06 <0\|1>` | **发射保持/释放**。仅 `uv-k5-firmware-custom-remote`（补丁后）支持；0x06 在两固件解析器中都空闲，发给 v3 无害。发射保持期间主机应静默保活，释放后再恢复 |
+| 串口 PTT（自研扩展） | `AA 55 06 <0\|1>` | **发射保持/释放**。仅 `uv-k5-firmware-custom-remote`（补丁后）支持；0x06 在两固件解析器中都空闲，发给 k1k5v3 无害。发射保持期间主机应静默保活，释放后再恢复 |
 
-> ⚠️ **v3 专属**：`55 AA 05 <flags>` 为扩展保活（bit0=RF Log 实时流，bit1=历史分页，bit7=重启同步）。
-> **v1 固件的解析器不认识此帧——它不算保活，发送它会导致推流停止。** v1 必须发纯 `55 AA 00 00`。
+> ⚠️ **k1k5v3 专属**：`55 AA 05 <flags>` 为扩展保活（bit0=RF Log 实时流，bit1=历史分页，bit7=重启同步）。
+> **k5v1 固件的解析器不认识此帧——它不算保活，发送它会导致推流停止。** k5v1 必须发纯 `55 AA 00 00`。
 
 ### keycode（`KEY_Code_e`，两固件一致）
 
@@ -70,7 +73,7 @@ v1 固件为用户在 Egzumer/F4HWN V1 固件基础上增加串口控制的版�
 
 解析器（`KEYBOARD_ProcessProtocolByte`）是不带长度字段的字节流状态机：不匹配即回 IDLE，乱码无害。保活帧与按键帧可任意交错。
 
-## 3. 对讲机 → 主机（v1 只有屏幕差分帧）
+## 3. 对讲机 → 主机（k5v1 只有屏幕差分帧）
 
 固件推流总是以 **版本标记字节** 开头：`0xF0 | stateFlags`，随后每帧：
 
@@ -126,7 +129,7 @@ def decode_chunk(fb, idx, payload):
 
 | 项 | 建议值 | 依据 |
 |---|---|---|
-| 波特率（v1） | **38400** | 固件 `UART1->BAUD = 48M/39053` ≈ 38400；配套 k5viewer.py 同值 |
+| 波特率（k5v1） | **38400** | 固件 `UART1->BAUD = 48M/39053` ≈ 38400；配套 k5viewer.py 同值 |
 | 保活周期 | 100ms | keepAlive=15 个主循环周期，需留裕量 |
 | PTT 期间静默 UART | 发射时暂停保活与注入 | Sleeve 上数据与 PTT1 共触点，AIOC 固件 TXFRCPTT 数据优先会强制释放 PTT1；释放后恢复（对讲机自动补整帧） |
 | 屏幕转发 | 变化即推，上限 ~20fps | 固件仅推差分，量极小 |
@@ -134,10 +137,10 @@ def decode_chunk(fb, idx, payload):
 | 重同步 | 扫描 `0xF0..0xF7` 标记字节 | 标记高 4 位固定，误码可自恢复 |
 | 单连接独占 | 是 | CHIRP 等占用时 `gUART_LockK5Viewer` 锁定推流 |
 
-## 5. v3 附录：RF Log 扩展（K1/K5 V3 专属）
+## 5. k1k5v3 附录：RF Log 扩展（K1/K5 V3 专属）
 
-v3 固件（USB CDC）在扩展保活 `55 AA 05 <flags>` 打开对应位后会追加两种帧
-（v1 固件无此功能，解析库保留支持以便双固件兼容）：
+k1k5v3 固件（USB CDC）在扩展保活 `55 AA 05 <flags>` 打开对应位后会追加两种帧
+（k5v1 固件无此功能，解析库保留支持以便双固件兼容）：
 
 ### type = 0x05：RF Log 实时包
 

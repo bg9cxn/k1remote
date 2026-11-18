@@ -1,13 +1,16 @@
 # K1Remote
 
-把 **UV-K5**（自研固件 `uv-k5-firmware-custom-remote`，V1 固件 + 串口控制）放到信号好的高处，通过树莓派在浏览器里完成远程收听、发射（PTT）与控制。
+把 **UV-K5 V1**（自研固件 `uv-k5-firmware-custom-remote`，串口控制）放到信号好的高处，通过树莓派在浏览器里完成远程收听、发射（PTT）与控制。
 实现计划、协议文档见 `docs/`；同时以"固件变体"配置保留对 UV-K1 / UV-K5 V3 硬件（`uv-k1-k5v3-firmware-custom`）的兼容。
+
+> 变体命名：`k5v1` = UV-K5 V1 硬件；`k1k5v3` = UV-K1 / UV-K5 V3 硬件（单镜像固件双硬件兼容）。
+> 2026-11 前的旧写法 `v1`/`v3` 已弃用（裸版本号与项目名易混淆）。
 
 ## 当前状态
 
 - **M0-M4 完成（真机验证）**：屏幕镜像、远程键盘、WebRTC 收听/发话、PTT 闭环（尾音保护/看门狗/静默联动），实机 QSO 基本无问题
 - **M5 完成**：HTTPS + token 认证、软件增益（rx_gain/tx_gain）、树莓派部署包（`deploy/`：install.sh + systemd + 配置模板 + 部署手册）
-- **UV-K1 / UV-K5 V3（v3 变体）已支持**：数据口 Type-C CDC（推荐）或 K 头 38400 UART（应急单线），部署定稿双线 = Type-C 数据 + K 型口 AIOC 音频/PTT；RF Log 电池电压/频率/信道名上状态面板；刷机与接线见 `deploy/README.md §1.5`
+- **UV-K1 / UV-K5 V3（k1k5v3 变体）已支持**：数据口 Type-C CDC（推荐）或 K 头 38400 UART（应急单线），部署定稿双线 = Type-C 数据 + K 型口 AIOC 音频/PTT；RF Log 电池电压/频率/信道名上状态面板；刷机与接线见 `deploy/README.md §1.5`
 - **M6（用户主导）**：WireGuard 打通两端网络 → 树莓派上高点部署
 
 ## 快速开始
@@ -54,14 +57,14 @@ python -m k1remote --demo
 ### 4. 跑 Web 服务（接真机，完整 QSO）
 
 ```bash
-python -m k1remote                # 串口与变体自动识别（Linux: ttyACM→v3、ttyUSB→v1）
+python -m k1remote                # 串口与变体自动识别（Linux: ttyACM→k1k5v3、ttyUSB→k5v1）
 python -m k1remote -p /dev/ttyUSB0 --host 0.0.0.0
-python -m k1remote --variant v3   # 显式指定：UV-K1 / UV-K5 V3 硬件（USB CDC + RF Log）
+python -m k1remote --variant k1k5v3   # 显式指定：UV-K1 / UV-K5 V3 硬件（USB CDC + RF Log）
 python -m k1remote --list-ports   # 查看串口识别结果（含变体推断标注）
 ```
 
-> Windows 下 CDC 与 UART 桥都枚举为 `COM*`，自动推断回落 v1——接 K1/K5 V3 时请显式
-> `--variant v3 -p COMx`（否则屏幕可显示但无 RF Log）。变体只影响波特率缺省与保活
+> Windows 下 CDC 与 UART 桥都枚举为 `COM*`，自动推断回落 k5v1——接 K1/K5 V3 时请显式
+> `--variant k1k5v3 -p COMx`（否则屏幕可显示但无 RF Log）。变体只影响波特率缺省与保活
 > 扩展位，屏幕流与按键协议两种固件完全一致。
 
 操作流程：**▶ 开始收听**（会同时请求麦克风；拒绝则仅收听）→ **勾选发射使能** → **按住 PTT 说话**（松开结束发射）。
@@ -83,7 +86,7 @@ tls_key = "certs/server.key"
 token = "你的操作口令"          # 可选：启用后 WS 需 ?token= 认证
 
 [radio]
-variant = "auto"       # auto=按串口类型推断（缺省）/ v1 / v3 显式指定
+variant = "auto"       # auto=按串口类型推断（缺省）/ k5v1 / k1k5v3 显式指定
 
 [audio]
 device = "AIOC"        # 收音输入设备（缺省自动匹配 AIOC）

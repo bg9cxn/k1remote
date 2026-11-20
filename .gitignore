@@ -2,6 +2,7 @@
 __pycache__/
 *.pyc
 .pytest_cache/
+venv/
 
 # 本地密钥与配置（重新生成：tools/make_cert.py；模板见 deploy/config.example.toml）
 certs/

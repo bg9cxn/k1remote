@@ -6,6 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "k1remote"
 version = "0.1.0"
 description = "UV-K1 / UV-K5 远程工作站：屏幕镜像、远程控制、WebRTC 语音"
+license = { text = "Apache-2.0" }
 requires-python = ">=3.11"
 dependencies = [
     "pyserial>=3.5",

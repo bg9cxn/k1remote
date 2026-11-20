@@ -45,16 +45,10 @@ cd "$REPO_DIR"
 if [[ ! -f certs/server.pem ]]; then
     echo "== 生成自签 HTTPS 证书（含 mDNS 名与所有网卡/WG 地址）=="
     CERT_ARGS=(--out "$REPO_DIR/certs" --dns "$(hostname -s).local")
-    # WireGuard 隧道 IP 一并写入证书（跨网段/隧道访问不再依赖证书更新）
-    if command -v wg >/dev/null 2>&1 && wg show 2>/dev/null | grep -q interface; then
-        for ip in $(wg show wg0 2>/dev/null | awk '/interface/ {print $3}'); do
-            CERT_ARGS+=(--ip "$ip")
-        done
-    fi
+    # 所有网卡地址（含 WireGuard wg0）写入 SAN：换 IP / 换访问路径无需重签证书；
+    # make_cert.py 内部按 ipaddress 归一化去重，与自动探测的地址重复无害
     for ip in $(hostname -I 2>/dev/null); do
-        case "$ip" in
-            10.*) CERT_ARGS+=(--ip "$ip") ;;  # 常见 WG/内网段预埋
-        esac
+        CERT_ARGS+=(--ip "$ip")
     done
     "$REPO_DIR/venv/bin/python" tools/make_cert.py "${CERT_ARGS[@]}"
 fi

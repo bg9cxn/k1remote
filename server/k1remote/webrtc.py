@@ -180,8 +180,8 @@ class WebRTCService:
 
     下行：每会话独立 RadioAudioTrack（各自订阅队列），两个浏览器同时收听
     互不抢帧。上行：浏览器麦克风轨 → sink.feed()（预卷缓冲），PTT 锁存时
-    播放；多会话时采用"最新连接的麦克风优先"门控（单操作员锁，避免两路
-    麦克风交替污染发话 FIFO）。
+    播放；多会话时采用"首个麦克风到者优先、断开让位"门控（单操作员锁，
+    避免两路麦克风交替污染发话 FIFO）。
     """
 
     def __init__(self, source: AudioSource, sink=None) -> None:

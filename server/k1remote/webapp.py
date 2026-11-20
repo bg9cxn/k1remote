@@ -15,13 +15,14 @@
 from __future__ import annotations
 
 import asyncio
+import hmac
 import json
 import logging
 import ssl
 import threading
 import time
 from pathlib import Path
-from typing import Optional, Set
+from typing import Optional
 
 from aiohttp import WSMsgType, web
 
@@ -36,6 +37,27 @@ log = logging.getLogger(__name__)
 WS_MSG_SCREEN = 0x01
 
 WAKE_MIN_INTERVAL_S = 10.0  # 两次唤醒注入的最小间隔
+
+OUTQ_MAX = 32  # 每客户端出站队列上限（≈1.5-3s 屏幕流积压）；满即断开慢连接
+
+
+async def _client_writer(ws: "web.WebSocketResponse", outq: "asyncio.Queue") -> None:
+    """按序排空客户端出站队列（屏幕帧/状态/RF Log）。
+
+    广播方只做无阻塞入队（Hub._enqueue），实际发送在此独占执行——天然的
+    每客户端背压边界：慢客户端只占满自己的队列后被淘汰，不会阻塞事件循环
+    或拖累其他会话。发送失败（连接已死）即退出，由 ws_handler 清理。"""
+    try:
+        while True:
+            kind, data = await outq.get()
+            if kind == "bytes":
+                await ws.send_bytes(data)
+            else:
+                await ws.send_str(data)
+    except asyncio.CancelledError:
+        pass
+    except Exception as exc:
+        log.debug("客户端发送结束: %s", exc)
 
 
 def should_wake(state_flags: int, last_screen_at: Optional[float],
@@ -59,7 +81,7 @@ class Hub:
     def __init__(self) -> None:
         self.screen = ScreenState()
         self.radio_connected = False
-        self.clients: Set[web.WebSocketResponse] = set()
+        self.clients: dict = {}  # ws -> 出站队列（背压边界，见 _enqueue/_client_writer）
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._loop_tid: Optional[int] = None
         self.last_screen_at: Optional[float] = None  # 最近收到屏幕帧的时刻
@@ -99,6 +121,10 @@ class Hub:
 
     def _handle_state(self, connected: bool) -> None:
         self.radio_connected = connected
+        if not connected:
+            # 串口断开：清掉残留的 TX/RX 灯标志——发射保持期固件静默，断开前
+            # 的最后一帧可能还带着灯位，不清会让状态面板灯与实际不符
+            self.screen.state_flags &= ~(FLAG_LED_RED | FLAG_LED_GREEN)
         self.broadcast_json(self.status_dict())
 
     # ---- 状态与广播 ----
@@ -120,20 +146,29 @@ class Hub:
         }
 
     def broadcast_binary(self, data: bytes) -> None:
-        for ws in list(self.clients):
-            asyncio.ensure_future(ws.send_bytes(data))
+        self._enqueue(("bytes", data))
 
     def broadcast_json(self, obj: dict) -> None:
         """线程安全：串口 worker 线程（PTT 重连复位）也会调用。"""
-        if self._loop is not None and threading.get_ident() != self._loop_tid:
-            self._loop.call_soon_threadsafe(self._broadcast_json_now, obj)
-        else:
-            self._broadcast_json_now(obj)
-
-    def _broadcast_json_now(self, obj: dict) -> None:
         text = json.dumps(obj, ensure_ascii=False)
-        for ws in list(self.clients):
-            asyncio.ensure_future(ws.send_str(text))
+        if self._loop is not None and threading.get_ident() != self._loop_tid:
+            self._loop.call_soon_threadsafe(self._enqueue, ("str", text))
+        else:
+            self._enqueue(("str", text))
+
+    def _enqueue(self, item) -> None:
+        """向所有客户端出站队列投递（事件循环线程内执行）。
+
+        队列满 = 该客户端消费太慢（弱网/挂起），立即断开淘汰——否则
+        aiohttp 发送缓冲会随屏幕流无限增长，拖垮服务端内存。"""
+        for ws, outq in list(self.clients.items()):
+            try:
+                outq.put_nowait(item)
+            except asyncio.QueueFull:
+                log.warning("客户端发送队列积压（%d 帧），断开慢连接", OUTQ_MAX)
+                self.clients.pop(ws, None)
+                asyncio.ensure_future(ws.close(code=web.WSCloseCode.POLICY_VIOLATION,
+                                               message=b"slow consumer"))
 
     async def send_snapshot(self, ws: web.WebSocketResponse, ptt: PttManager) -> None:
         await ws.send_json({"t": "hello", **{
@@ -200,8 +235,14 @@ def make_app(cfg: AppConfig, radio: K5ViewerClient, hub: Hub,
             await webrtc.close()
         except Exception as exc:
             log.warning("WebRTC 清理异常: %s", exc)
-        if wake_task:
-            wake_task.cancel()
+
+    def _token_ok(request: web.Request) -> bool:
+        expected = cfg.server.token
+        if not expected:
+            return True
+        # 常量时间比较，防时序侧信道；encode 以兼容非 ASCII 口令
+        return hmac.compare_digest(
+            expected.encode(), (request.query.get("token") or "").encode())
 
     app = web.Application()
     app.on_startup.append(on_startup)
@@ -210,13 +251,20 @@ def make_app(cfg: AppConfig, radio: K5ViewerClient, hub: Hub,
     async def index(_request: web.Request) -> web.Response:
         return web.FileResponse(web_dir / "index.html")
 
+    async def auth_check(request: web.Request) -> web.Response:
+        """token 自检端点：前端 WS 反复连不上时用它区分"token 无效"与网络故障。"""
+        if not _token_ok(request):
+            raise web.HTTPUnauthorized(text="invalid token")
+        return web.json_response({"ok": True})
+
     async def ws_handler(request: web.Request) -> web.StreamResponse:
-        token = cfg.server.token
-        if token and request.query.get("token") != token:
+        if not _token_ok(request):
             raise web.HTTPUnauthorized(text="missing or invalid token")
         ws = web.WebSocketResponse(heartbeat=30.0)
         await ws.prepare(request)
-        hub.clients.add(ws)
+        outq: asyncio.Queue = asyncio.Queue(maxsize=OUTQ_MAX)
+        writer = asyncio.create_task(_client_writer(ws, outq))
+        hub.clients[ws] = outq
         log.info("客户端接入（当前 %d 个）", len(hub.clients))
         try:
             await hub.send_snapshot(ws, ptt)
@@ -226,7 +274,8 @@ def make_app(cfg: AppConfig, radio: K5ViewerClient, hub: Hub,
                 elif msg.type == WSMsgType.ERROR:
                     log.warning("WS 错误: %s", msg.data)
         finally:
-            hub.clients.discard(ws)
+            writer.cancel()
+            hub.clients.pop(ws, None)
             ptt.release_if_holder(ws)  # 持有 PTT 的操作端断开 → 立即撤发
             log.info("客户端断开（剩余 %d 个）", len(hub.clients))
         return ws
@@ -274,6 +323,7 @@ def make_app(cfg: AppConfig, radio: K5ViewerClient, hub: Hub,
 
     app.router.add_get("/", index)
     app.router.add_get("/ws", ws_handler)
+    app.router.add_get("/auth-check", auth_check)
     app.router.add_static("/static/", web_dir / "static")
     return app
 
@@ -310,6 +360,7 @@ def run(cfg: AppConfig, radio: K5ViewerClient, webrtc: WebRTCService,
     try:
         web.run_app(app, host=cfg.server.host, port=cfg.server.port,
                     ssl_context=ssl_ctx, print=None,
+                    access_log=None,  # access log 记录完整请求行（含 ?token=...），会泄入口令进 journal
                     shutdown_timeout=5.0)  # 打开的 WebSocket 不阻塞退出（默认 60s）
     except (KeyboardInterrupt, asyncio.CancelledError):
         pass

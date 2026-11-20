@@ -373,7 +373,6 @@ class SoundCardSink:
                      dev_idx, devices[dev_idx]["name"], label)
             return
         raise last_exc or RuntimeError("无可用输出设备")
-        self._stream.start()
 
     def _on_playback(self, outdata, frames, time_info, status) -> None:
         if status:

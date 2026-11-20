@@ -26,11 +26,16 @@ function updateLeds() {
 
 let ws = null;
 let reconnectDelay = 1000;
+let wsOpenedOnce = false; // 本次页面会话是否成功连上过（用于区分 token 错误与网络故障）
+
+function currentToken() {
+  return new URLSearchParams(location.search).get("token")
+    ?? sessionStorage.getItem("k1token");
+}
 
 function wsUrl() {
   const proto = location.protocol === "https:" ? "wss" : "ws";
-  const token = new URLSearchParams(location.search).get("token")
-    ?? sessionStorage.getItem("k1token");
+  const token = currentToken();
   if (token) {
     sessionStorage.setItem("k1token", token); // 记住，刷新/后续连接自动携带
     return `${proto}://${location.host}/ws?token=${encodeURIComponent(token)}`;
@@ -38,17 +43,32 @@ function wsUrl() {
   return `${proto}://${location.host}/ws`;
 }
 
+// token 无效时给用户可读提示（WS 的 onclose 拿不到 HTTP 状态码，用 /auth-check 探测）
+function checkAuthHint() {
+  const token = currentToken();
+  fetch(`/auth-check${token ? `?token=${encodeURIComponent(token)}` : ""}`)
+    .then((r) => {
+      if (r.status === 401) {
+        pttStatus.textContent = "⚠ token 无效：请带 ?token=口令 重新访问一次";
+        reconnectDelay = 10000; // token 错误时重连无意义，放慢轮询
+      }
+    })
+    .catch(() => {});
+}
+
 function connect() {
   ws = new WebSocket(wsUrl());
   ws.binaryType = "arraybuffer";
 
   ws.onopen = () => {
+    wsOpenedOnce = true;
     dotWs.classList.add("on");
     reconnectDelay = 1000;
   };
   ws.onclose = () => {
     dotWs.classList.remove("on");
     dotRadio.classList.remove("on");
+    if (!wsOpenedOnce) checkAuthHint();
     setTimeout(connect, reconnectDelay);
     reconnectDelay = Math.min(reconnectDelay * 2, 10000);
   };
@@ -253,6 +273,10 @@ const listenHint = $("listen-hint");
 let peer = null;
 
 listenBtn.addEventListener("click", async () => {
+  if (!ws || ws.readyState !== WebSocket.OPEN) {
+    listenHint.textContent = "服务未连接，无法建立收听（等待 WebSocket 重连）";
+    return;
+  }
   if (peer) {
     peer.close();
     peer = null;
